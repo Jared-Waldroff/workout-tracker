@@ -24,7 +24,7 @@ export default function CreateWorkoutPage() {
     const location = useLocation()
     const initialDate = location.state?.date || new Date().toISOString().split('T')[0]
 
-    const { createWorkout, workouts } = useWorkouts()
+    const { createWorkout, workouts, getWorkoutById } = useWorkouts()
     const { exercises, createExercise } = useExercises()
 
     const [name, setName] = useState('')
@@ -36,16 +36,45 @@ export default function CreateWorkoutPage() {
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState('')
     const [visibleCount, setVisibleCount] = useState(10)
+    const [copiedSets, setCopiedSets] = useState(null)
 
     // Sort workouts by date descending for the recent list
     const sortedWorkouts = [...workouts].sort((a, b) => new Date(b.scheduled_date) - new Date(a.scheduled_date))
     const visibleWorkouts = sortedWorkouts.slice(0, visibleCount)
 
-    const handleCopyWorkout = (workout) => {
-        setName(workout.name)
-        setColor(workout.color)
-        if (workout.workout_exercises) {
-            setSelectedExerciseIds(workout.workout_exercises.map(we => we.exercise?.id).filter(Boolean))
+    const handleCopyWorkout = async (workout) => {
+        setLoading(true)
+        try {
+            // Get full workout details including sets
+            const { data, error } = await getWorkoutById(workout.id)
+            if (error) throw new Error(error)
+
+            if (data) {
+                setName(data.name)
+                setColor(data.color)
+
+                if (data.workout_exercises) {
+                    // Set selected exercises
+                    const exerciseIds = data.workout_exercises
+                        .map(we => we.exercise?.id)
+                        .filter(Boolean)
+                    setSelectedExerciseIds(exerciseIds)
+
+                    // Store sets for copying
+                    const setsMap = {}
+                    data.workout_exercises.forEach(we => {
+                        if (we.exercise_id && we.sets && we.sets.length > 0) {
+                            setsMap[we.exercise_id] = we.sets
+                        }
+                    })
+                    setCopiedSets(setsMap)
+                }
+            }
+        } catch (err) {
+            console.error('Error copying workout:', err)
+            setError('Failed to copy workout details')
+        } finally {
+            setLoading(false)
         }
     }
 
@@ -68,7 +97,8 @@ export default function CreateWorkoutPage() {
         try {
             const { error: createError } = await createWorkout(
                 { name: name.trim(), scheduled_date: date, color },
-                selectedExerciseIds
+                selectedExerciseIds,
+                copiedSets // Pass the copied sets map
             )
 
             if (createError) throw new Error(createError)

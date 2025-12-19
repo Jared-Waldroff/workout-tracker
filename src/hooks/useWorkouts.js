@@ -103,7 +103,7 @@ export function useWorkouts() {
         }
     }
 
-    const createWorkout = async (workout, exerciseIds) => {
+    const createWorkout = async (workout, exerciseIds, customSets = null) => {
         if (!user) return { error: 'Not authenticated' }
 
         try {
@@ -135,8 +135,8 @@ export function useWorkouts() {
 
                 if (exerciseError) throw exerciseError
 
-                // Add default sets for each exercise (3 sets)
-                const defaultSets = []
+                // Add sets for each exercise
+                const setsToInsert = []
                 for (const we of workoutExercises) {
                     const { data: weData } = await supabase
                         .from('workout_exercises')
@@ -146,19 +146,34 @@ export function useWorkouts() {
                         .single()
 
                     if (weData) {
-                        for (let i = 0; i < 3; i++) {
-                            defaultSets.push({
-                                workout_exercise_id: weData.id,
-                                weight: 0,
-                                reps: 0,
-                                is_completed: false
+                        const exerciseSets = customSets?.[we.exercise_id]
+
+                        if (exerciseSets && exerciseSets.length > 0) {
+                            // Copy existing sets
+                            exerciseSets.forEach(set => {
+                                setsToInsert.push({
+                                    workout_exercise_id: weData.id,
+                                    weight: set.weight,
+                                    reps: set.reps,
+                                    is_completed: false
+                                })
                             })
+                        } else {
+                            // Default 3 empty sets
+                            for (let i = 0; i < 3; i++) {
+                                setsToInsert.push({
+                                    workout_exercise_id: weData.id,
+                                    weight: 0,
+                                    reps: 0,
+                                    is_completed: false
+                                })
+                            }
                         }
                     }
                 }
 
-                if (defaultSets.length > 0) {
-                    await supabase.from('sets').insert(defaultSets)
+                if (setsToInsert.length > 0) {
+                    await supabase.from('sets').insert(setsToInsert)
                 }
             }
 
