@@ -6,7 +6,8 @@ import './CrossFitWorkoutCard.css'
 export default function CrossFitWorkoutCard({
     workout,
     onDelete,
-    onShuffle
+    onShuffle,
+    isCompleted = false
 }) {
     const navigate = useNavigate()
     const [showActions, setShowActions] = useState(false)
@@ -30,7 +31,15 @@ export default function CrossFitWorkoutCard({
     }
 
     return (
-        <GlassCard className="cf-workout-card" onClick={handleCardClick}>
+        <GlassCard className={`cf-workout-card ${isCompleted ? 'completed' : ''}`} onClick={handleCardClick}>
+            {isCompleted && (
+                <div className="cf-completed-badge">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                        <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                    Completed
+                </div>
+            )}
             <div className="cf-header">
                 <div className="cf-badge">
                     <span className="cf-logo">CF</span>

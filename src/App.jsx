@@ -17,33 +17,9 @@ import ActiveWorkoutPage from './pages/ActiveWorkoutPage'
 import ExerciseDetailPage from './pages/ExerciseDetailPage'
 import CrossFitWorkoutPage from './pages/CrossFitWorkoutPage'
 
-function AppContent() {
-  // Handle app visibility changes (screen lock/unlock)
-  useEffect(() => {
-    const handleVisibilityChange = async () => {
-      if (document.visibilityState === 'visible') {
-        // App became visible - refresh the session to reconnect
-        console.log('App became visible - refreshing session...')
-        try {
-          const { data: { session }, error } = await supabase.auth.getSession()
-          if (error) {
-            console.error('Session refresh error:', error)
-          } else if (session) {
-            // Trigger a session refresh to ensure the connection is active
-            await supabase.auth.refreshSession()
-            console.log('Session refreshed successfully')
-          }
-        } catch (err) {
-          console.error('Error refreshing session:', err)
-        }
-      }
-    }
 
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-    }
-  }, [])
+function AppContent() {
+  // Session refresh is now handled by useVisibilityRefresh in data hooks
 
   return (
     <Routes>

@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
+import { useAthleteProfile } from '../hooks/useAthleteProfile'
+import { checkWorkoutForBadges, BADGE_DEFINITIONS } from '../data/badges'
 import ExerciseSection from '../components/ExerciseSection'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Footer from '../components/Footer'
@@ -9,11 +11,13 @@ import './ActiveWorkoutPage.css'
 export default function ActiveWorkoutPage() {
     const { id } = useParams()
     const navigate = useNavigate()
+    const { addBadge, hasBadge } = useAthleteProfile()
     const [workout, setWorkout] = useState(null)
     const [loading, setLoading] = useState(true)
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
     const [showCompleteConfirm, setShowCompleteConfirm] = useState(false)
     const [showIncompleteWarning, setShowIncompleteWarning] = useState(false)
+    const [newBadge, setNewBadge] = useState(null)
 
     // Load workout directly from supabase to avoid hook dependency issues
     useEffect(() => {
@@ -96,6 +100,18 @@ export default function ActiveWorkoutPage() {
             .from('workouts')
             .update({ is_completed: newStatus })
             .eq('id', workout.id)
+
+        // Check for race badges if completing workout
+        if (newStatus) {
+            const earnedBadges = checkWorkoutForBadges({ ...workout, is_completed: true })
+            for (const badgeId of earnedBadges) {
+                if (!hasBadge(badgeId)) {
+                    await addBadge(badgeId)
+                    setNewBadge(BADGE_DEFINITIONS[badgeId])
+                    break // Show one badge at a time
+                }
+            }
+        }
     }
 
     const handleCompleteClick = () => {
@@ -262,6 +278,21 @@ export default function ActiveWorkoutPage() {
                 onConfirm={() => setShowIncompleteWarning(false)}
                 onCancel={() => setShowIncompleteWarning(false)}
             />
+
+            {/* Badge Earned Celebration */}
+            {newBadge && (
+                <div className="badge-earned-overlay" onClick={() => setNewBadge(null)}>
+                    <div className="badge-earned-modal">
+                        <div className="badge-earned-emoji">{newBadge.emoji}</div>
+                        <h2>Achievement Unlocked!</h2>
+                        <h3>{newBadge.name}</h3>
+                        <p>{newBadge.description}</p>
+                        <button className="btn btn-primary" onClick={() => setNewBadge(null)}>
+                            Awesome!
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }

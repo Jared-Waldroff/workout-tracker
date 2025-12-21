@@ -124,22 +124,40 @@ export function useGoalChat() {
     }
 
     // Send message to AI
-    const sendMessage = useCallback(async (userMessage) => {
+    const sendMessage = useCallback(async (userMessage, isRetry = false) => {
         if (!userMessage.trim()) return
 
-        // Initialize chat on first message
+        // If retrying and chat is broken, reset it
+        if (isRetry && chatRef.current) {
+            console.log('Retry: reinitializing chat...')
+            chatRef.current = null
+        }
+
+        // Initialize chat on first message or after reset
         if (!chatRef.current) {
             initializeChat()
         }
 
-        // Add user message to state
-        const newUserMessage = { role: 'user', content: userMessage }
-        setMessages(prev => [...prev, newUserMessage])
+        // Add user message to state (only if not a retry)
+        if (!isRetry) {
+            const newUserMessage = { role: 'user', content: userMessage }
+            setMessages(prev => [...prev, newUserMessage])
+        }
+
         setIsLoading(true)
         setError(null)
 
         try {
-            const result = await chatRef.current.sendMessage(userMessage)
+            // Add timeout for Gemini requests
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('Request timed out. Please check your connection and try again.')), 30000)
+            })
+
+            const result = await Promise.race([
+                chatRef.current.sendMessage(userMessage),
+                timeoutPromise
+            ])
+
             const responseText = result.response.text()
 
             // Parse commands from response
@@ -167,13 +185,36 @@ export function useGoalChat() {
 
         } catch (err) {
             console.error('Error sending message:', err)
-            setError(err.message || 'Failed to get response from AI')
-            // Remove the user message if we failed
-            setMessages(prev => prev.slice(0, -1))
+
+            // Provide user-friendly error messages
+            let errorMessage = 'Failed to get response. '
+            if (err.message?.includes('load failed') || err.message?.includes('fetch')) {
+                errorMessage = 'Network error - connection to AI failed. Check your internet and try again.'
+                // Mark chat as broken so retry will reinitialize
+                chatRef.current = null
+            } else if (err.message?.includes('timed out')) {
+                errorMessage = err.message
+                chatRef.current = null
+            } else {
+                errorMessage += err.message || 'Please try again.'
+            }
+
+            setError(errorMessage)
+
+            // Remove the user message if we failed and it wasn't a retry
+            if (!isRetry) {
+                setMessages(prev => prev.slice(0, -1))
+            }
         } finally {
             setIsLoading(false)
         }
     }, [initializeChat])
+
+    // Retry the last failed message
+    const retryLastMessage = useCallback((lastUserMessage) => {
+        if (!lastUserMessage) return
+        sendMessage(lastUserMessage, true)
+    }, [sendMessage])
 
     // Start a new conversation
     const startNewChat = useCallback(() => {
@@ -230,10 +271,12 @@ export function useGoalChat() {
         workoutPlan,
         pendingCommands,
         sendMessage,
+        retryLastMessage,
         startNewChat,
         getInitialGreeting,
         updateContext,
         clearPlan: () => setWorkoutPlan(null),
-        clearCommands
+        clearCommands,
+        clearError: () => setError(null)
     }
 }

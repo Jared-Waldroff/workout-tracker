@@ -13,12 +13,23 @@ export function useExercises() {
         try {
             setLoading(true)
 
+            // Create a timeout promise
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('Request timed out')), 10000)
+            })
+
             // Fetch all exercises (default ones + user's custom ones)
             // RLS policy handles the filtering
-            const { data, error: fetchError } = await supabase
+            const query = supabase
                 .from('exercises')
                 .select('*')
                 .order('name', { ascending: true })
+
+            // Race between the query and the timeout
+            const { data, error: fetchError } = await Promise.race([
+                query,
+                timeoutPromise
+            ])
 
             if (fetchError) throw fetchError
 
@@ -27,10 +38,14 @@ export function useExercises() {
         } catch (err) {
             console.error('Error fetching exercises:', err)
             setError(err.message)
+            // Keep existing exercises on timeout, only clear on real errors
+            if (err.message !== 'Request timed out' && exercises.length > 0) {
+                setExercises([])
+            }
         } finally {
             setLoading(false)
         }
-    }, [])
+    }, [exercises.length])
 
     const createExercise = useCallback(async (exercise) => {
         if (!user) return { error: 'Not authenticated' }

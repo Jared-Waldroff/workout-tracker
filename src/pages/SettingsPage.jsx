@@ -6,6 +6,8 @@ import Footer from '../components/Footer'
 import GlassCard from '../components/GlassCard'
 import ColorPicker from '../components/ColorPicker'
 import ConfirmDialog from '../components/ConfirmDialog'
+import ProfileCard from '../components/ProfileCard'
+import ProfileEditor from '../components/ProfileEditor'
 import { useState } from 'react'
 import './SettingsPage.css'
 
@@ -14,6 +16,7 @@ export default function SettingsPage() {
     const { user, signOut } = useAuth()
     const { theme, colors, showCF, updateTheme, updateColors, updateShowCF } = useTheme()
     const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
+    const [showProfileEditor, setShowProfileEditor] = useState(false)
 
     const handleLogout = async () => {
         await signOut()
@@ -25,6 +28,9 @@ export default function SettingsPage() {
             <Header />
 
             <main className="settings-content">
+                {/* Profile Card */}
+                <ProfileCard onEdit={() => setShowProfileEditor(true)} />
+
                 <GlassCard className="settings-section">
                     <h3 className="section-title">Theme</h3>
                     <div className="theme-options">
@@ -118,6 +124,11 @@ export default function SettingsPage() {
                 confirmText="Sign Out"
                 onConfirm={handleLogout}
                 onCancel={() => setShowLogoutConfirm(false)}
+            />
+
+            <ProfileEditor
+                isOpen={showProfileEditor}
+                onClose={() => setShowProfileEditor(false)}
             />
         </div>
     )

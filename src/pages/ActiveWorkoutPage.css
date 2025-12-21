@@ -100,3 +100,95 @@
     gap: var(--space-md);
     color: var(--text-tertiary);
 }
+
+/* Badge Earned Celebration */
+.badge-earned-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+    animation: fadeIn 0.3s ease-out;
+}
+
+.badge-earned-modal {
+    background: var(--bg-secondary);
+    border-radius: var(--radius-xl);
+    padding: var(--space-xl);
+    text-align: center;
+    max-width: 320px;
+    margin: var(--space-md);
+    animation: celebrationPop 0.5s ease-out;
+}
+
+@keyframes celebrationPop {
+    0% {
+        transform: scale(0);
+        opacity: 0;
+    }
+
+    50% {
+        transform: scale(1.1);
+    }
+
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+.badge-earned-emoji {
+    font-size: 5rem;
+    margin-bottom: var(--space-md);
+    animation: bounce 0.6s ease-out;
+}
+
+@keyframes bounce {
+
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-20px);
+    }
+}
+
+.badge-earned-modal h2 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--accent-secondary);
+    margin: 0 0 var(--space-xs) 0;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.badge-earned-modal h3 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 var(--space-sm) 0;
+}
+
+.badge-earned-modal p {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    margin: 0 0 var(--space-lg) 0;
+}
+
+.badge-earned-modal .btn {
+    width: 100%;
+}

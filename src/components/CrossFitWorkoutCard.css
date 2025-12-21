@@ -157,3 +157,22 @@
     color: var(--text-primary);
     text-align: center;
 }
+
+/* Completed State */
+.cf-workout-card.completed {
+    border-left-color: var(--success);
+    opacity: 0.85;
+}
+
+.cf-completed-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+    margin-bottom: var(--space-md);
+    padding: var(--space-xs) var(--space-sm);
+    background: var(--success);
+    color: white;
+    border-radius: var(--radius-full);
+    font-size: 0.75rem;
+    font-weight: 600;
+}

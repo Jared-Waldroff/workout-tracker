@@ -125,12 +125,12 @@
     margin: 0;
 }
 
-/* Feature Toggle Styling */
 .feature-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: var(--space-sm) 0;
+    margin-bottom: var(--space-md);
 }
 
 .feature-info {

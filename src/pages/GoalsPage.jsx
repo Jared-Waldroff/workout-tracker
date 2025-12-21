@@ -19,6 +19,7 @@ export default function GoalsPage() {
         workoutPlan,
         pendingCommands,
         sendMessage,
+        retryLastMessage,
         startNewChat,
         getInitialGreeting,
         updateContext,
@@ -351,9 +352,25 @@ export default function GoalsPage() {
                         {error && (
                             <div className="error-message">
                                 <p>⚠️ {error}</p>
-                                <button className="btn btn-secondary" onClick={() => sendMessage(messages[messages.length - 1]?.content || 'Hello')}>
-                                    Retry
-                                </button>
+                                <div className="error-actions">
+                                    <button
+                                        className="btn btn-primary"
+                                        onClick={() => {
+                                            const lastUserMsg = messages.filter(m => m.role === 'user').pop()
+                                            if (lastUserMsg) {
+                                                retryLastMessage(lastUserMsg.content)
+                                            } else {
+                                                startNewChat()
+                                                setTimeout(() => getInitialGreeting(), 100)
+                                            }
+                                        }}
+                                    >
+                                        Retry
+                                    </button>
+                                    <button className="btn btn-secondary" onClick={handleNewChat}>
+                                        Start Fresh
+                                    </button>
+                                </div>
                             </div>
                         )}
 

@@ -2,7 +2,6 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSets } from '../hooks/useSets'
 import { useExercises } from '../hooks/useExercises'
-import ConfirmDialog from './ConfirmDialog'
 import './ExerciseSection.css'
 
 export default function ExerciseSection({
@@ -15,7 +14,6 @@ export default function ExerciseSection({
     const [sets, setSets] = useState(workoutExercise.sets || [])
     const [history, setHistory] = useState([])
     const [showHistory, setShowHistory] = useState(false)
-    const [deleteConfirm, setDeleteConfirm] = useState({ open: false, setId: null })
     const [isExpanded, setIsExpanded] = useState(true)
     const debounceTimers = useRef({})
 
@@ -81,12 +79,9 @@ export default function ExerciseSection({
         }
     }
 
-    const handleDeleteSet = async () => {
-        if (deleteConfirm.setId) {
-            await deleteSet(deleteConfirm.setId)
-            setSets(prev => prev.filter(s => s.id !== deleteConfirm.setId))
-            setDeleteConfirm({ open: false, setId: null })
-        }
+    const handleDeleteSet = async (setId) => {
+        await deleteSet(setId)
+        setSets(prev => prev.filter(s => s.id !== setId))
     }
 
     const handleExerciseClick = () => {
@@ -156,7 +151,7 @@ export default function ExerciseSection({
                                 </button>
                                 <button
                                     className="set-delete"
-                                    onClick={() => setDeleteConfirm({ open: true, setId: set.id })}
+                                    onClick={() => handleDeleteSet(set.id)}
                                 >
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                         <line x1="18" y1="6" x2="6" y2="18" />
@@ -205,15 +200,7 @@ export default function ExerciseSection({
                 </>
             )}
 
-            <ConfirmDialog
-                isOpen={deleteConfirm.open}
-                title="Delete Set"
-                message="Are you sure you want to delete this set?"
-                confirmText="Delete"
-                variant="danger"
-                onConfirm={handleDeleteSet}
-                onCancel={() => setDeleteConfirm({ open: false, setId: null })}
-            />
+
         </div>
     )
 }

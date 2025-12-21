@@ -122,7 +122,6 @@
     }
 }
 
-/* Error message */
 .error-message {
     background: rgba(239, 68, 68, 0.1);
     border: 1px solid var(--error);
@@ -133,6 +132,11 @@
     gap: var(--space-sm);
     align-items: center;
     text-align: center;
+}
+
+.error-actions {
+    display: flex;
+    gap: var(--space-sm);
 }
 
 /* Plan Preview */
@@ -299,6 +303,7 @@
 
 .new-chat-button {
     font-size: 0.875rem;
+    margin-bottom: var(--space-lg);
 }
 
 /* Schedule Toggle */

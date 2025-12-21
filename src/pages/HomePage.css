@@ -275,3 +275,46 @@
         right: calc(50% - 300px + var(--space-md) + 64px);
     }
 }
+
+/* Back to Today floating button */
+.back-to-today-btn {
+    position: fixed;
+    bottom: 100px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-sm) var(--space-lg);
+    background: var(--accent-primary);
+    border: none;
+    border-radius: var(--radius-full);
+    color: white;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: var(--shadow-lg);
+    z-index: 40;
+    animation: slideUp 0.3s ease-out;
+}
+
+.back-to-today-btn:hover {
+    background: var(--accent-secondary);
+    transform: translateX(-50%) scale(1.05);
+}
+
+.back-to-today-btn:active {
+    transform: translateX(-50%) scale(0.95);
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+}

@@ -3,6 +3,13 @@ import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../context/AuthContext'
 
 const DEFAULT_PROFILE = {
+    // Display fields
+    display_name: null,
+    bio: null,
+    avatar_url: null,
+    badges: [],
+
+    // Training background
     fitness_level: 'intermediate',
     primary_goal: null,
     secondary_goals: [],
@@ -161,6 +168,76 @@ export function useAthleteProfile() {
         return lines.length > 0 ? lines.join('\n') : null
     }, [profile])
 
+    // Upload avatar image to Supabase Storage
+    const uploadAvatar = useCallback(async (file) => {
+        if (!user) return { error: 'Not authenticated' }
+
+        try {
+            const fileExt = file.name.split('.').pop()
+            const fileName = `${user.id}/avatar.${fileExt}`
+
+            // Upload to Supabase Storage
+            const { error: uploadError } = await supabase.storage
+                .from('avatars')
+                .upload(fileName, file, {
+                    upsert: true,
+                    contentType: file.type
+                })
+
+            if (uploadError) throw uploadError
+
+            // Get public URL
+            const { data: { publicUrl } } = supabase.storage
+                .from('avatars')
+                .getPublicUrl(fileName)
+
+            // Add cache-buster to force refresh
+            const avatarUrl = `${publicUrl}?t=${Date.now()}`
+
+            // Update profile with new avatar URL
+            await updateProfile({ avatar_url: avatarUrl })
+
+            return { data: avatarUrl, error: null }
+        } catch (err) {
+            console.error('Error uploading avatar:', err)
+            return { data: null, error: err.message }
+        }
+    }, [user, updateProfile])
+
+    // Add a badge to profile
+    const addBadge = useCallback(async (badgeId, metadata = {}) => {
+        if (!profile) return { error: 'No profile' }
+
+        const currentBadges = profile.badges || []
+
+        // Check if badge already earned
+        if (currentBadges.some(b => b.id === badgeId)) {
+            return { error: 'Badge already earned' }
+        }
+
+        const newBadge = {
+            id: badgeId,
+            earned_at: new Date().toISOString(),
+            ...metadata
+        }
+
+        const updatedBadges = [...currentBadges, newBadge]
+        return updateProfile({ badges: updatedBadges })
+    }, [profile, updateProfile])
+
+    // Remove a badge from profile
+    const removeBadge = useCallback(async (badgeId) => {
+        if (!profile) return { error: 'No profile' }
+
+        const updatedBadges = (profile.badges || []).filter(b => b.id !== badgeId)
+        return updateProfile({ badges: updatedBadges })
+    }, [profile, updateProfile])
+
+    // Check if user has a specific badge
+    const hasBadge = useCallback((badgeId) => {
+        return (profile?.badges || []).some(b => b.id === badgeId)
+    }, [profile])
+
     // Load on mount
     useEffect(() => {
         loadProfile()
@@ -174,6 +251,10 @@ export function useAthleteProfile() {
         loadProfile,
         saveProfile,
         updateProfile,
-        getProfileSummary
+        getProfileSummary,
+        uploadAvatar,
+        addBadge,
+        removeBadge,
+        hasBadge
     }
 }
