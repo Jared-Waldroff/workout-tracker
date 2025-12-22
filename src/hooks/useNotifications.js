@@ -133,30 +133,8 @@ export function useNotifications() {
         fetchNotifications()
     }, [fetchNotifications])
 
-    // Subscribe to realtime notifications
-    useEffect(() => {
-        if (!user) return
-
-        const channel = supabase
-            .channel('notifications')
-            .on(
-                'postgres_changes',
-                {
-                    event: 'INSERT',
-                    schema: 'public',
-                    table: 'notifications',
-                    filter: `user_id=eq.${user.id}`
-                },
-                (payload) => {
-                    setNotifications(prev => [payload.new, ...prev])
-                }
-            )
-            .subscribe()
-
-        return () => {
-            supabase.removeChannel(channel)
-        }
-    }, [user])
+    // Note: Realtime notifications disabled due to Safari iOS WebSocket security issues
+    // Notifications will update on page refresh or navigation
 
     return {
         notifications,
