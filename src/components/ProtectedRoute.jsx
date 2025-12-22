@@ -10,41 +10,72 @@ export default function ProtectedRoute({ children }) {
     const [hasUsername, setHasUsername] = useState(true)
 
     useEffect(() => {
+        let isMounted = true
+
         const checkUsername = async () => {
             if (!user) {
-                setCheckingUsername(false)
+                if (isMounted) setCheckingUsername(false)
                 return
             }
 
             // Skip check if already on onboarding page
             if (location.pathname === '/onboarding') {
-                setCheckingUsername(false)
-                setHasUsername(true) // Don't redirect from onboarding
+                if (isMounted) {
+                    setCheckingUsername(false)
+                    setHasUsername(true) // Don't redirect from onboarding
+                }
                 return
             }
 
             try {
-                const { data } = await supabase
+                const { data, error } = await supabase
                     .from('athlete_profiles')
                     .select('username')
                     .eq('user_id', user.id)
                     .single()
 
-                setHasUsername(!!data?.username)
+                if (error) {
+                    console.warn('Profile check error:', error.message)
+                }
+
+                if (isMounted) {
+                    setHasUsername(!!data?.username)
+                    setCheckingUsername(false)
+                }
             } catch (err) {
+                console.error('Profile check exception:', err)
                 // No profile yet means no username
-                setHasUsername(false)
+                if (isMounted) {
+                    setHasUsername(false)
+                    setCheckingUsername(false)
+                }
             }
-            setCheckingUsername(false)
         }
 
         checkUsername()
+
+        // Timeout fallback - if still checking after 5 seconds, assume profile issue
+        const timeoutId = setTimeout(() => {
+            if (isMounted && checkingUsername) {
+                console.warn('Username check timed out - redirecting to onboarding')
+                setHasUsername(false)
+                setCheckingUsername(false)
+            }
+        }, 5000)
+
+        return () => {
+            isMounted = false
+            clearTimeout(timeoutId)
+        }
     }, [user, location.pathname])
 
     if (loading || checkingUsername) {
         return (
             <div className="min-h-screen flex items-center justify-center">
-                <div className="spinner" />
+                <div className="flex flex-col items-center gap-md">
+                    <div className="spinner" />
+                    <span className="text-secondary text-sm">Loading...</span>
+                </div>
             </div>
         )
     }
@@ -60,3 +91,4 @@ export default function ProtectedRoute({ children }) {
 
     return children
 }
+

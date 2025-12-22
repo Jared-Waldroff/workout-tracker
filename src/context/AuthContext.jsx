@@ -20,6 +20,7 @@ export function AuthProvider({ children }) {
         supabase.auth.getSession()
             .then(({ data: { session } }) => {
                 clearTimeout(timeoutId)
+                console.log('Session check complete:', session ? 'logged in' : 'no session')
                 setUser(session?.user ?? null)
                 setLoading(false)
             })
@@ -33,23 +34,29 @@ export function AuthProvider({ children }) {
         // Listen for auth changes
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
             async (event, session) => {
+                console.log('Auth state changed:', event, session?.user?.email)
                 setUser(session?.user ?? null)
 
-                // Create user preferences if new sign up
+                // Create user preferences if new sign up - wrapped in try/catch
                 if (event === 'SIGNED_IN' && session?.user) {
-                    const { data: existingPrefs } = await supabase
-                        .from('user_preferences')
-                        .select('id')
-                        .eq('user_id', session.user.id)
-                        .single()
+                    try {
+                        const { data: existingPrefs } = await supabase
+                            .from('user_preferences')
+                            .select('id')
+                            .eq('user_id', session.user.id)
+                            .single()
 
-                    if (!existingPrefs) {
-                        await supabase.from('user_preferences').insert({
-                            user_id: session.user.id,
-                            theme: 'dark',
-                            accent_color: '#1e3a5f',
-                            secondary_color: '#c9a227'
-                        })
+                        if (!existingPrefs) {
+                            await supabase.from('user_preferences').insert({
+                                user_id: session.user.id,
+                                theme: 'dark',
+                                accent_color: '#1e3a5f',
+                                secondary_color: '#c9a227'
+                            })
+                        }
+                    } catch (err) {
+                        // Don't let preference creation errors break auth flow
+                        console.warn('Could not create user preferences:', err.message)
                     }
                 }
             }
