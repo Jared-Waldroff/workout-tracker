@@ -15,5 +15,21 @@ export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '', {
         autoRefreshToken: true,
         persistSession: true,
         detectSessionInUrl: true
+    },
+    // Disable realtime to prevent WebSocket errors on Safari iOS
+    // Safari blocks WebSockets in certain security contexts (PWA, private browsing)
+    realtime: {
+        params: {
+            eventsPerSecond: 0
+        }
+    },
+    global: {
+        headers: {
+            'X-Client-Info': 'workout-tracker'
+        }
     }
 })
+
+// Disable realtime channels completely
+supabase.realtime.disconnect()
+
