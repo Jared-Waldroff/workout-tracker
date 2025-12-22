@@ -58,11 +58,39 @@ export function AuthProvider({ children }) {
         return () => subscription.unsubscribe()
     }, [])
 
-    const signUp = async (email, password) => {
+    const signUp = async (email, password, username) => {
+        // First check if username is available
+        const { data: existingUser } = await supabase
+            .from('athlete_profiles')
+            .select('username')
+            .eq('username', username.toLowerCase())
+            .single()
+
+        if (existingUser) {
+            return { data: null, error: { message: 'Username already taken' } }
+        }
+
         const { data, error } = await supabase.auth.signUp({
             email,
             password
         })
+
+        if (error) return { data, error }
+
+        // Create athlete profile with username
+        if (data?.user) {
+            const { error: profileError } = await supabase
+                .from('athlete_profiles')
+                .upsert({
+                    user_id: data.user.id,
+                    username: username.toLowerCase()
+                }, { onConflict: 'user_id' })
+
+            if (profileError) {
+                console.error('Error creating profile:', profileError)
+            }
+        }
+
         return { data, error }
     }
 
@@ -84,13 +112,24 @@ export function AuthProvider({ children }) {
         return { data, error }
     }
 
+    const signInWithGoogle = async () => {
+        const { data, error } = await supabase.auth.signInWithOAuth({
+            provider: 'google',
+            options: {
+                redirectTo: `${window.location.origin}/`
+            }
+        })
+        return { data, error }
+    }
+
     const value = {
         user,
         loading,
         signUp,
         signIn,
         signOut,
-        resetPassword
+        resetPassword,
+        signInWithGoogle
     }
 
     return (

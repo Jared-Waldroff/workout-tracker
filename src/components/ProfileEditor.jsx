@@ -14,9 +14,11 @@ export default function ProfileEditor({ isOpen, onClose }) {
     } = useAthleteProfile()
 
     const [displayName, setDisplayName] = useState('')
+    const [username, setUsername] = useState('')
     const [bio, setBio] = useState('')
     const [uploading, setUploading] = useState(false)
     const [saving, setSaving] = useState(false)
+    const [usernameError, setUsernameError] = useState('')
     const [activeTab, setActiveTab] = useState('profile') // 'profile' or 'badges'
     const fileInputRef = useRef(null)
 
@@ -24,7 +26,9 @@ export default function ProfileEditor({ isOpen, onClose }) {
     useEffect(() => {
         if (isOpen) {
             setDisplayName(profile.display_name || '')
+            setUsername(profile.username || '')
             setBio(profile.bio || '')
+            setUsernameError('')
         }
     }, [isOpen, profile])
 
@@ -57,13 +61,42 @@ export default function ProfileEditor({ isOpen, onClose }) {
         }
     }
 
+    // Validate username format
+    const validateUsername = (value) => {
+        if (!value) return ''
+        if (value.length < 3) return 'Username must be at least 3 characters'
+        if (value.length > 20) return 'Username must be 20 characters or less'
+        if (!/^[a-zA-Z0-9_]+$/.test(value)) return 'Only letters, numbers, and underscores'
+        return ''
+    }
+
+    const handleUsernameChange = (e) => {
+        const value = e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '')
+        setUsername(value)
+        setUsernameError(validateUsername(value))
+    }
+
     const handleSave = async () => {
+        // Validate username
+        const error = validateUsername(username)
+        if (error) {
+            setUsernameError(error)
+            return
+        }
+
         setSaving(true)
-        await updateProfile({
+        const result = await updateProfile({
             display_name: displayName.trim() || null,
+            username: username.trim() || null,
             bio: bio.trim() || null
         })
         setSaving(false)
+
+        if (result?.error?.code === '23505') {
+            setUsernameError('Username already taken')
+            return
+        }
+
         onClose()
     }
 
@@ -156,6 +189,24 @@ export default function ProfileEditor({ isOpen, onClose }) {
                                     placeholder="Your name"
                                     maxLength={50}
                                 />
+                            </div>
+
+                            <div className="form-group">
+                                <label htmlFor="username">Username</label>
+                                <div className="username-input-wrapper">
+                                    <span className="username-prefix">@</span>
+                                    <input
+                                        id="username"
+                                        type="text"
+                                        value={username}
+                                        onChange={handleUsernameChange}
+                                        placeholder="your_username"
+                                        maxLength={20}
+                                        className={usernameError ? 'input-error' : ''}
+                                    />
+                                </div>
+                                {usernameError && <span className="error-text">{usernameError}</span>}
+                                <span className="field-hint">Others can find you by @{username || 'username'}</span>
                             </div>
 
                             <div className="form-group">

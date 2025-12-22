@@ -251,7 +251,7 @@
 /* Input Form */
 .chat-input-form {
     position: fixed;
-    bottom: 80px;
+    bottom: 52px;
     left: 0;
     right: 0;
     padding: var(--space-md);
@@ -304,6 +304,7 @@
 .new-chat-button {
     font-size: 0.875rem;
     margin-bottom: var(--space-lg);
+    padding: 4px 4px;
 }
 
 /* Schedule Toggle */

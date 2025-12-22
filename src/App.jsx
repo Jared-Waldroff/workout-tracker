@@ -7,6 +7,7 @@ import { supabase } from './lib/supabaseClient'
 
 // Pages
 import LoginPage from './pages/LoginPage'
+import OnboardingPage from './pages/OnboardingPage'
 import HomePage from './pages/HomePage'
 import CalendarPage from './pages/CalendarPage'
 import ExercisesPage from './pages/ExercisesPage'
@@ -16,6 +17,9 @@ import CreateWorkoutPage from './pages/CreateWorkoutPage'
 import ActiveWorkoutPage from './pages/ActiveWorkoutPage'
 import ExerciseDetailPage from './pages/ExerciseDetailPage'
 import CrossFitWorkoutPage from './pages/CrossFitWorkoutPage'
+import SquadPage from './pages/SquadPage'
+import NotificationsPage from './pages/NotificationsPage'
+import AthleteProfilePage from './pages/AthleteProfilePage'
 
 
 function AppContent() {
@@ -24,6 +28,11 @@ function AppContent() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/onboarding" element={
+        <ProtectedRoute>
+          <OnboardingPage />
+        </ProtectedRoute>
+      } />
 
       <Route path="/" element={
         <ProtectedRoute>
@@ -52,6 +61,24 @@ function AppContent() {
       <Route path="/settings" element={
         <ProtectedRoute>
           <SettingsPage />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/squad" element={
+        <ProtectedRoute>
+          <SquadPage />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/notifications" element={
+        <ProtectedRoute>
+          <NotificationsPage />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/athlete/:id" element={
+        <ProtectedRoute>
+          <AthleteProfilePage />
         </ProtectedRoute>
       } />
 

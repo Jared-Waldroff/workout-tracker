@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
+import { useAthleteProfile } from '../hooks/useAthleteProfile'
 import Header from '../components/Header'
 import Footer from '../components/Footer'
 import GlassCard from '../components/GlassCard'
@@ -15,8 +16,13 @@ export default function SettingsPage() {
     const navigate = useNavigate()
     const { user, signOut } = useAuth()
     const { theme, colors, showCF, updateTheme, updateColors, updateShowCF } = useTheme()
+    const { profile, updateProfile } = useAthleteProfile()
     const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
     const [showProfileEditor, setShowProfileEditor] = useState(false)
+
+    const handlePrivacyToggle = async (isPrivate) => {
+        await updateProfile({ is_private: isPrivate })
+    }
 
     const handleLogout = async () => {
         await signOut()
@@ -98,6 +104,21 @@ export default function SettingsPage() {
                 </GlassCard>
 
                 <GlassCard className="settings-section">
+                    <div className="feature-row">
+                        <div className="feature-info">
+                            <span className="feature-label">Private Account</span>
+                            <span className="feature-description">Only Squad members can see your workouts</span>
+                        </div>
+                        <label className="switch">
+                            <input
+                                type="checkbox"
+                                checked={profile?.is_private || false}
+                                onChange={(e) => handlePrivacyToggle(e.target.checked)}
+                            />
+                            <span className="slider round"></span>
+                        </label>
+                    </div>
+
                     <div className="feature-row">
                         <div className="feature-info">
                             <span className="feature-label">CrossFit Button</span>

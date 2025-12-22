@@ -198,6 +198,54 @@
     margin-top: var(--space-xs);
 }
 
+/* Username Input */
+.username-input-wrapper {
+    display: flex;
+    align-items: center;
+    background: var(--input-bg);
+    border: 1px solid var(--input-border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+}
+
+.username-prefix {
+    padding: var(--space-sm) 0 var(--space-sm) var(--space-md);
+    color: var(--text-tertiary);
+    font-size: 1rem;
+    font-weight: 500;
+}
+
+.username-input-wrapper input {
+    border: none;
+    padding-left: 0;
+}
+
+.username-input-wrapper input:focus {
+    outline: none;
+}
+
+.username-input-wrapper:focus-within {
+    border-color: var(--accent-secondary);
+}
+
+.input-error {
+    border-color: var(--error) !important;
+}
+
+.error-text {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--error);
+    margin-top: var(--space-xs);
+}
+
+.field-hint {
+    display: block;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    margin-top: var(--space-xs);
+}
+
 /* Badges Tab */
 .badges-intro {
     font-size: 0.875rem;

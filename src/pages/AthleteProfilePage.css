@@ -1,0 +1,303 @@
+.athlete-profile-page {
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+}
+
+.page-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    padding: var(--space-md);
+    padding-top: calc(var(--space-md) + env(safe-area-inset-top));
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    border-radius: 0;
+}
+
+.page-header h1 {
+    flex: 1;
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0;
+    text-align: center;
+}
+
+.athlete-content {
+    flex: 1;
+    padding: var(--space-md);
+    padding-bottom: 100px;
+    max-width: 600px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+/* Athlete Card */
+.athlete-card {
+    padding: var(--space-lg);
+    margin-bottom: var(--space-md);
+}
+
+.athlete-header {
+    display: flex;
+    gap: var(--space-md);
+    margin-bottom: var(--space-md);
+}
+
+.athlete-avatar {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.athlete-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.athlete-avatar .avatar-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+    color: white;
+    font-size: 1.5rem;
+    font-weight: 700;
+}
+
+.athlete-info {
+    flex: 1;
+}
+
+.athlete-info h2 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 var(--space-xs) 0;
+}
+
+.athlete-bio {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    margin: 0;
+    line-height: 1.4;
+}
+
+.athlete-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-xs);
+    margin-bottom: var(--space-md);
+}
+
+.athlete-badges .badge-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    padding: var(--space-xs) var(--space-sm);
+    background: var(--input-bg);
+    border-radius: var(--radius-full);
+}
+
+.athlete-badges .badge-emoji {
+    font-size: 0.875rem;
+}
+
+.athlete-badges .badge-name {
+    font-size: 0.7rem;
+    color: var(--text-primary);
+}
+
+.follow-section {
+    padding-top: var(--space-md);
+    border-top: 1px solid var(--glass-border);
+}
+
+/* Workouts Section */
+.athlete-workouts {
+    margin-top: var(--space-md);
+}
+
+.athlete-workouts h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin: 0 0 var(--space-md) 0;
+}
+
+.workouts-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+}
+
+.workout-card {
+    padding: var(--space-md);
+}
+
+.workout-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-sm);
+}
+
+.workout-color {
+    width: 4px;
+    height: 40px;
+    border-radius: 2px;
+}
+
+.workout-info {
+    flex: 1;
+}
+
+.workout-info h4 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.workout-info span {
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+}
+
+.copy-btn {
+    color: var(--text-tertiary);
+}
+
+.copy-btn:hover {
+    color: var(--accent-secondary);
+}
+
+.workout-exercises {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-xs);
+}
+
+.exercise-tag {
+    font-size: 0.7rem;
+    padding: var(--space-xs) var(--space-sm);
+    background: var(--input-bg);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+}
+
+.exercise-more {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    padding: var(--space-xs);
+}
+
+/* Private Notice */
+.private-notice {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: var(--space-xl);
+    gap: var(--space-md);
+    color: var(--text-tertiary);
+}
+
+.private-notice h4 {
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.private-notice p {
+    font-size: 0.875rem;
+    margin: 0;
+}
+
+.no-workouts {
+    text-align: center;
+    padding: var(--space-xl);
+    color: var(--text-tertiary);
+}
+
+/* Copy Modal */
+.copy-modal {
+    background: var(--bg-secondary);
+    border-radius: var(--radius-xl);
+    padding: var(--space-lg);
+    max-width: 400px;
+    width: calc(100% - var(--space-lg) * 2);
+    margin: auto;
+}
+
+.copy-modal h3 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 var(--space-sm) 0;
+}
+
+.copy-modal>p {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    margin: 0 0 var(--space-lg) 0;
+}
+
+.copy-options {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-lg);
+}
+
+.copy-option {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    padding: var(--space-md);
+    background: var(--input-bg);
+    border: 1px solid var(--input-border);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    text-align: left;
+    transition: all var(--transition-fast);
+}
+
+.copy-option:hover {
+    border-color: var(--accent-secondary);
+}
+
+.option-icon {
+    font-size: 1.5rem;
+}
+
+.option-info h4 {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 2px 0;
+}
+
+.option-info p {
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+    margin: 0;
+}
+
+.loading-container,
+.error-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-md);
+    color: var(--text-tertiary);
+}

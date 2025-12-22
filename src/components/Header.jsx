@@ -1,15 +1,35 @@
-import { useTheme } from '../context/ThemeContext'
+import { useNavigate } from 'react-router-dom'
+import { useNotifications } from '../hooks/useNotifications'
+import { useAthleteProfile } from '../hooks/useAthleteProfile'
 import './Header.css'
 
 export default function Header() {
-    const { theme, toggleTheme } = useTheme()
+    const navigate = useNavigate()
+    const { unreadCount } = useNotifications()
+    const { profile } = useAthleteProfile()
+
+    const getInitials = (name) => {
+        if (!name) return 'H'
+        return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+    }
 
     return (
         <header className="header glass safe-top">
             <div className="header-content">
                 <div className="header-left">
-                    {/* Spacer for balance */}
-                    <div style={{ width: 40 }} />
+                    <button
+                        className="btn btn-icon btn-ghost notification-btn"
+                        onClick={() => navigate('/notifications')}
+                        aria-label="Notifications"
+                    >
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                            <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                        </svg>
+                        {unreadCount > 0 && (
+                            <span className="notification-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>
+                        )}
+                    </button>
                 </div>
 
                 <div className="header-center">
@@ -31,19 +51,16 @@ export default function Header() {
 
                 <div className="header-right">
                     <button
-                        className="btn btn-icon btn-ghost theme-toggle"
-                        onClick={toggleTheme}
-                        aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+                        className="profile-avatar-btn"
+                        onClick={() => navigate('/settings')}
+                        aria-label="Profile & Settings"
                     >
-                        {theme === 'dark' ? (
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <circle cx="12" cy="12" r="5" />
-                                <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
-                            </svg>
+                        {profile?.avatar_url ? (
+                            <img src={profile.avatar_url} alt="Profile" className="header-avatar" />
                         ) : (
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-                            </svg>
+                            <div className="header-avatar-placeholder">
+                                {getInitials(profile?.display_name)}
+                            </div>
                         )}
                     </button>
                 </div>
