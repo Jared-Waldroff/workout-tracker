@@ -211,10 +211,10 @@ export default function SquadScreen() {
 
     const shareInviteLink = async () => {
         await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        const inviteLink = `https://workout-tracker.app/join/${inviteCode}`;
+        const inviteLink = `https://hybrid.app/join/${inviteCode}`;
         try {
             await Share.share({
-                message: `Join my Squad on the Workout Tracker app! ${inviteLink}`,
+                message: `Join my Squad on HYBRID! ${inviteLink}`,
                 title: 'Join my Squad',
             });
         } catch (err) {
@@ -224,7 +224,7 @@ export default function SquadScreen() {
 
     const copyInviteLink = async () => {
         await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        const inviteLink = `https://workout-tracker.app/join/${inviteCode}`;
+        const inviteLink = `https://hybrid.app/join/${inviteCode}`;
         await Clipboard.setStringAsync(inviteLink);
         Alert.alert('Copied!', 'Invite link copied to clipboard');
     };
@@ -488,7 +488,7 @@ export default function SquadScreen() {
                                     {inviteCode ? (
                                         <View style={styles.qrWrapper}>
                                             <QRCode
-                                                value={`https://workout-tracker.app/join/${inviteCode}`}
+                                                value={`https://hybrid.app/join/${inviteCode}`}
                                                 size={180}
                                                 color="#0a141f"
                                                 backgroundColor="#fff"
