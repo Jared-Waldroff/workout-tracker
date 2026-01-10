@@ -54,7 +54,7 @@ export default function ExercisesScreen() {
 
     const handleExercisePress = async (exercise: any) => {
         await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        navigation.navigate('ExerciseDetail' as never, { exerciseId: exercise.id, exerciseName: exercise.name } as never);
+        (navigation as any).navigate('ExerciseDetail', { exerciseId: exercise.id, exerciseName: exercise.name });
     };
 
     const handleAddPress = async () => {

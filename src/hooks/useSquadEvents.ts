@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../context/AuthContext';
+import { Image } from 'expo-image';
 
 // Types
 export interface SquadEvent {
@@ -151,6 +152,15 @@ export function useSquadEvents() {
 
             setEvents(eventsWithMeta);
             setMyEvents(eventsWithMeta.filter(e => e.is_participating || e.creator_id === user.id));
+
+            // Prefetch cover images to improved perceived performance
+            const imagesToPrefetch = eventsWithMeta
+                .map(e => e.cover_image_url)
+                .filter(url => url !== null) as string[];
+
+            if (imagesToPrefetch.length > 0) {
+                Image.prefetch(imagesToPrefetch);
+            }
 
         } catch (err: any) {
             console.error('Error loading events:', err);
@@ -361,14 +371,21 @@ export function useSquadEvents() {
         if (!user) return { error: 'Not authenticated' };
 
         try {
-            const { error: updateError } = await supabase
+            const { data, error: updateError, count } = await supabase
                 .from('squad_events')
                 .update(updates)
                 .eq('id', eventId)
-                .eq('creator_id', user.id);
+                .eq('creator_id', user.id)
+                .select();
 
             if (updateError) throw updateError;
 
+            if (!data || data.length === 0) {
+                console.error('No rows updated - check RLS policies');
+                return { error: 'Update failed - you may not have permission to edit this event' };
+            }
+
+            console.log('Event updated successfully:', data);
             await loadEvents();
             return { error: null };
         } catch (err: any) {

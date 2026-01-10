@@ -20,6 +20,7 @@ import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
+import { usePostDraft } from '../context/PostDraftContext';
 import { useActivityFeed, uploadFeedPhotos } from '../hooks/useActivityFeed';
 import { useWorkouts } from '../hooks/useWorkouts';
 import ScreenLayout from '../components/ScreenLayout';
@@ -35,9 +36,17 @@ export default function CreatePostScreen() {
     const { createPost } = useActivityFeed();
     const { getRecentCompletedWorkouts, loading: workoutsLoading } = useWorkouts();
 
-    const [caption, setCaption] = useState('');
-    const [selectedPhotos, setSelectedPhotos] = useState<ImagePicker.ImagePickerAsset[]>([]);
-    const [selectedWorkout, setSelectedWorkout] = useState<any>(null);
+    // Use context for draft state
+    const {
+        caption,
+        setCaption,
+        selectedPhotos,
+        setSelectedPhotos,
+        selectedWorkout,
+        setSelectedWorkout,
+        clearDraft
+    } = usePostDraft();
+
     const [uploading, setUploading] = useState(false);
 
     // Workout selection modal
@@ -46,12 +55,7 @@ export default function CreatePostScreen() {
 
     useEffect(() => {
         loadRecentWorkouts();
-        // Check for event params
-        if (route.params?.eventId) {
-            // Logic to link event - we'll pass it to createPost
-            // We can also display "Posting to [Event Name]" 
-        }
-    }, [route.params?.eventId]);
+    }, []);
 
     const loadRecentWorkouts = async () => {
         const workouts = await getRecentCompletedWorkouts();
@@ -99,33 +103,6 @@ export default function CreatePostScreen() {
 
             }
 
-            // Create post object - simplified for now, assuming we link workout differently in future
-            // or pass detailed workout data in metadata.
-            // For MVP, we will just use the available createPost interface.
-            // Note: createPost expects an event_id. If no event, we might need a general feed post type.
-            // Currently DB schema requires event_id or completion_id logic.
-            // Assuming we are posting to general feed or a specific placeholder event if needed.
-            // Wait - the schema might allow nullable event_id?
-            // Checking useActivityFeed types: event_id is string.
-            // We might need to handle "General" posts or link to a dummy event. 
-            // OR - wait, looking at schema: event_id is NOT NULL. 
-            // So for now, we can restrict to posting about an event OR we need to adjust schema.
-            // But the user just asked for "Create Post" on the Squad screen.
-            // Let's assume for now we might need to handle this backend side or valid event ID.
-            // Actually, let's look at the implementation plan. "Activity feed from all connections".
-            // If the schema enforces event_id, we can't make a generic post.
-            // Let's try to post with a null event_id and see (if not enforced in DB but enforced in Types).
-            // If enforced in DB, we'll need to create a "General" event or similar.
-
-            // For this implementation, let's try to use completion_id if workout selected.
-            // If generic, we might have an issue.
-            // EDIT: Inspecting the DB schema in memory...
-            // Let's assume generic posts are allowed if we relax the type or use a workaround.
-            // But strict typescript says event_id is string.
-            // I will try to pass a generic UUID or handle this.
-            // Actually, let's just use a dummy UUID or null cast for now and see if backend accepts it.
-            // If not, I will notify user.
-
             const { error } = await createPost({
                 caption: caption.trim(),
                 photo_urls: photoUrls,
@@ -137,6 +114,8 @@ export default function CreatePostScreen() {
                 throw new Error(error);
             }
 
+            // Clear draft on success
+            clearDraft();
             navigation.goBack();
 
         } catch (err: any) {
@@ -203,113 +182,152 @@ export default function CreatePostScreen() {
         </Modal>
     );
 
+    const scrollViewRef = React.useRef<ScrollView>(null);
+    const [inputLayoutY, setInputLayoutY] = useState(0);
+
+    const handleInputFocus = () => {
+        // Scroll to the input position with a bit of offset (e.g. 20px overlap)
+        if (scrollViewRef.current) {
+            setTimeout(() => {
+                scrollViewRef.current?.scrollTo({ y: inputLayoutY, animated: true });
+            }, 100); // Small delay for keyboard animation
+        }
+    };
+
     return (
-        <ScreenLayout>
-            <AppHeader title="Create Post" showBack showProfile={false} />
+        <ScreenLayout hideHeader>
             <KeyboardAvoidingView
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                 style={{ flex: 1 }}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0} // Adjust based on header height
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}
             >
-                <ScrollView
-                    style={styles.container}
-                    contentContainerStyle={{ paddingBottom: 100 }} // Add padding for scrolling past footer if needed
-                    keyboardShouldPersistTaps="handled" // Important for interactions
-                >
+                <View style={{ flex: 1, paddingTop: 16 }}>
 
-                    {/* Photos Section */}
-                    {selectedPhotos.length > 0 ? (
-                        <View style={styles.photosContainer}>
-                            <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false}>
-                                {selectedPhotos.map((asset, index) => (
-                                    <View key={index} style={[styles.fullWidthPhotoContainer, { width: width - (spacing.md * 2) }]}>
-                                        <Image
-                                            source={{ uri: asset.uri }}
-                                            style={[
-                                                styles.fullWidthPhoto,
-                                                { aspectRatio: asset.width / asset.height, borderRadius: radii.lg }
-                                            ]}
-                                        />
-                                        <Pressable
-                                            style={styles.removePhotoBtn}
-                                            onPress={() => removePhoto(index)}
-                                        >
-                                            <Feather name="x" size={16} color="#fff" />
+                    {/* Event Indicator (if applicable) */}
+                    {(route.params?.eventName || selectedWorkout?.event_name) && (
+                        <View style={styles.eventIndicator}>
+                            <Feather name="calendar" size={14} color={userColors.accent_color} />
+                            <Text style={[styles.eventIndicatorText, { color: userColors.accent_color }]}>
+                                Posting to {route.params?.eventName || selectedWorkout?.event_name}
+                            </Text>
+                        </View>
+                    )}
+
+                    <ScrollView
+                        ref={scrollViewRef}
+                        style={{ flex: 1 }}
+                        contentContainerStyle={{ paddingBottom: 150 }}
+                        keyboardDismissMode="on-drag"
+                        showsVerticalScrollIndicator={false}
+                    >
+                        {/* 1. Photo Section (Top) */}
+                        <View style={styles.photoSection}>
+                            {selectedPhotos.length > 0 ? (
+                                <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false} style={styles.photoScrollView}>
+                                    {selectedPhotos.map((asset, index) => (
+                                        <View key={index} style={[styles.photoContainer, { width: width - (spacing.md * 2), height: width - (spacing.md * 2) }]}>
+                                            <Image
+                                                source={{ uri: asset.uri }}
+                                                style={styles.photo}
+                                            />
+                                            <Pressable
+                                                style={styles.removePhotoBtn}
+                                                onPress={() => removePhoto(index)}
+                                            >
+                                                <Feather name="x" size={16} color="#fff" />
+                                            </Pressable>
+                                        </View>
+                                    ))}
+                                </ScrollView>
+                            ) : (
+                                <Pressable
+                                    style={[
+                                        styles.addPhotoPlaceholder,
+                                        {
+                                            backgroundColor: themeColors.inputBg,
+                                            width: width - (spacing.md * 2),
+                                            height: width - (spacing.md * 2)
+                                        }
+                                    ]}
+                                    onPress={pickImage}
+                                >
+                                    <Feather name="plus" size={48} color={themeColors.textMuted} />
+                                    <Text style={[styles.addPhotoText, { color: themeColors.textMuted }]}>Add Photo</Text>
+                                </Pressable>
+                            )}
+                        </View>
+
+                        {/* 2. Description (Caption) */}
+                        <View
+                            style={styles.inputContainer}
+                            onLayout={(event) => setInputLayoutY(event.nativeEvent.layout.y)}
+                        >
+                            <TextInput
+                                style={[styles.input, { color: themeColors.textPrimary }]}
+                                placeholder="Write a caption..."
+                                placeholderTextColor={themeColors.textSecondary}
+                                multiline
+                                value={caption}
+                                onChangeText={setCaption}
+                                autoFocus={false}
+                                scrollEnabled={false}
+                                onFocus={handleInputFocus}
+                            />
+                        </View>
+
+                        {/* 3. Attach Workout */}
+                        <View style={styles.workoutSection}>
+                            {selectedWorkout ? (
+                                <View style={[styles.workoutCard, { backgroundColor: themeColors.bgSecondary }]}>
+                                    <View style={styles.workoutHeader}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                            <View style={[styles.colorDot, { backgroundColor: selectedWorkout.color || userColors.accent_color }]} />
+                                            <Text style={[styles.workoutTitle, { color: themeColors.textPrimary }]}>
+                                                {selectedWorkout.name}
+                                            </Text>
+                                        </View>
+                                        <Pressable onPress={() => setSelectedWorkout(null)}>
+                                            <Feather name="x" size={16} color={themeColors.textSecondary} />
                                         </Pressable>
                                     </View>
-                                ))}
-                            </ScrollView>
-                        </View>
-                    ) : (
-                        <View style={styles.addPhotoContainer}>
-                            <Pressable
-                                style={[styles.addPhotoBtn, { backgroundColor: themeColors.inputBg, borderColor: themeColors.inputBorder }]}
-                                onPress={pickImage}
-                            >
-                                <Feather name="plus" size={48} color={themeColors.textMuted} />
-                            </Pressable>
-                        </View>
-                    )}
-
-                    <View style={styles.inputContainer}>
-                        <TextInput
-                            style={[styles.input, { color: themeColors.textPrimary }]}
-                            placeholder={route.params?.eventName ? `Post to ${route.params.eventName}...` : "What's on your mind?"}
-                            placeholderTextColor={themeColors.textSecondary}
-                            multiline
-                            value={caption}
-                            onChangeText={setCaption}
-                            autoFocus
-                        />
-                    </View>
-
-                    {/* Selected Workout Card */}
-                    {selectedWorkout && (
-                        <View style={[styles.workoutCard, { backgroundColor: themeColors.bgSecondary }]}>
-                            <View style={styles.workoutHeader}>
-                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                    <View style={[styles.colorDot, { backgroundColor: selectedWorkout.color || userColors.accent_color }]} />
-                                    <Text style={[styles.workoutTitle, { color: themeColors.textPrimary }]}>
-                                        {selectedWorkout.name}
+                                    <Text style={[styles.workoutDate, { color: themeColors.textSecondary }]}>
+                                        Completed on {new Date(selectedWorkout.scheduled_date).toLocaleDateString()}
                                     </Text>
                                 </View>
-                                <Pressable onPress={() => setSelectedWorkout(null)}>
-                                    <Feather name="x" size={16} color={themeColors.textSecondary} />
+                            ) : (
+                                <Pressable
+                                    style={[styles.attachWorkoutItem, { borderTopColor: themeColors.glassBorder, borderBottomColor: themeColors.glassBorder }]}
+                                    onPress={() => setShowWorkoutModal(true)}
+                                >
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                                        <View style={[styles.iconBox, { backgroundColor: themeColors.inputBg }]}>
+                                            <Feather name="activity" size={20} color={userColors.accent_color} />
+                                        </View>
+                                        <Text style={[styles.attachText, { color: themeColors.textPrimary }]}>
+                                            Attach Workout
+                                        </Text>
+                                    </View>
+                                    <Feather name="chevron-right" size={20} color={themeColors.textSecondary} />
                                 </Pressable>
-                            </View>
-                            <Text style={[styles.workoutDate, { color: themeColors.textSecondary }]}>
-                                Completed on {new Date(selectedWorkout.scheduled_date).toLocaleDateString()}
-                            </Text>
+                            )}
                         </View>
-                    )}
 
-                    {/* Attach Workout Button (if none selected) */}
-                    {!selectedWorkout && (
+                    </ScrollView>
+
+                    {/* Footer / Post Button */}
+                    <View style={[styles.footer, { borderTopColor: themeColors.glassBorder }]}>
                         <Pressable
-                            style={[styles.attachWorkoutBtn, { borderColor: userColors.accent_color }]}
-                            onPress={() => setShowWorkoutModal(true)}
+                            style={[styles.postBtn, { backgroundColor: !caption.trim() && !selectedWorkout && selectedPhotos.length === 0 ? themeColors.textMuted : userColors.accent_color }]}
+                            onPress={handlePost}
+                            disabled={(!caption.trim() && !selectedWorkout && selectedPhotos.length === 0) || uploading}
                         >
-                            <Feather name="activity" size={20} color={userColors.accent_color} />
-                            <Text style={[styles.attachWorkoutText, { color: userColors.accent_color }]}>
-                                Attach Workout
-                            </Text>
+                            {uploading ? (
+                                <ActivityIndicator color="#fff" />
+                            ) : (
+                                <Text style={styles.postBtnText}>Post</Text>
+                            )}
                         </Pressable>
-                    )}
-
-                </ScrollView>
-
-                <View style={[styles.footer, { borderTopColor: themeColors.glassBorder }]}>
-                    <Pressable
-                        style={[styles.postBtn, { backgroundColor: userColors.accent_color, opacity: uploading ? 0.7 : 1 }]}
-                        onPress={handlePost}
-                        disabled={uploading}
-                    >
-                        {uploading ? (
-                            <ActivityIndicator color="#fff" />
-                        ) : (
-                            <Text style={styles.postBtnText}>Post</Text>
-                        )}
-                    </Pressable>
+                    </View>
                 </View>
             </KeyboardAvoidingView>
 
@@ -319,157 +337,155 @@ export default function CreatePostScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
+    eventIndicator: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: spacing.sm,
+        gap: 6,
     },
-    inputContainer: {
+    eventIndicatorText: {
+        fontSize: typography.sizes.sm,
+        fontWeight: typography.weights.medium,
+    },
+    photoSection: {
         padding: spacing.md,
+        alignItems: 'center',
     },
-    input: {
-        fontSize: typography.sizes.lg,
-        textAlignVertical: 'top',
-        // minHeight removed to auto-grow
-        minHeight: 40,
+    photoScrollView: {
+        flexGrow: 0,
     },
-    photosContainer: {
-        marginBottom: spacing.md,
-        padding: spacing.md,
-    },
-    fullWidthPhotoContainer: {
+    photoContainer: {
+        marginRight: spacing.sm,
+        borderRadius: radii.md,
+        overflow: 'hidden',
         position: 'relative',
-        // Width set dynamically
-        marginRight: 0,
     },
-    fullWidthPhoto: {
+    photo: {
         width: '100%',
-        alignSelf: 'center',
-        resizeMode: 'cover',
+        height: '100%',
+        backgroundColor: '#eee',
     },
-    removePhotoBtn: {
-        position: 'absolute',
-        top: 10,
-        right: 10,
-        backgroundColor: 'rgba(0,0,0,0.6)',
-        width: 28,
-        height: 28,
-        borderRadius: 14,
+    addPhotoPlaceholder: {
+        borderRadius: radii.md,
         justifyContent: 'center',
         alignItems: 'center',
-        zIndex: 10,
+        gap: 8,
+    },
+    addPhotoText: {
+        fontSize: typography.sizes.sm,
+        fontWeight: typography.weights.medium,
+    },
+    inputContainer: {
+        paddingHorizontal: spacing.md,
+        marginBottom: spacing.md,
+    },
+    input: {
+        fontSize: typography.sizes.base,
+        minHeight: 60,
+    },
+    workoutSection: {
+        paddingHorizontal: spacing.md,
     },
     workoutCard: {
-        margin: spacing.md,
         padding: spacing.md,
-        borderRadius: radii.md,
+        borderRadius: radii.lg,
     },
     workoutHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 4,
+        marginBottom: spacing.xs,
     },
     workoutTitle: {
         fontSize: typography.sizes.base,
-        fontWeight: '600',
+        fontWeight: typography.weights.bold,
     },
     workoutDate: {
         fontSize: typography.sizes.sm,
     },
     colorDot: {
-        width: 12,
-        height: 12,
-        borderRadius: 6,
+        width: 10,
+        height: 10,
+        borderRadius: 5,
     },
-    toolbar: {
-        flexDirection: 'row',
-        padding: spacing.md,
-        borderTopWidth: 1,
-        gap: spacing.xl,
-    },
-    toolBtn: {
+    attachWorkoutItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 8,
-    },
-    toolLabel: {
-        fontSize: typography.sizes.base,
-        fontWeight: '500',
-    },
-    footer: {
-        padding: spacing.md,
+        justifyContent: 'space-between',
+        paddingVertical: spacing.md,
         borderTopWidth: 1,
+        borderBottomWidth: 1,
     },
-    postBtn: {
-        height: 48,
-        borderRadius: radii.md,
+    iconBox: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
         justifyContent: 'center',
         alignItems: 'center',
     },
+    attachText: {
+        fontSize: typography.sizes.base,
+        fontWeight: typography.weights.medium,
+    },
+    removePhotoBtn: {
+        position: 'absolute',
+        top: 4,
+        right: 4,
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        padding: 4,
+        borderRadius: 20,
+    },
+    footer: {
+        padding: spacing.md,
+        marginTop: 'auto',
+        alignItems: 'flex-end',
+    },
+    postBtn: {
+        paddingHorizontal: spacing.xl,
+        paddingVertical: spacing.sm,
+        borderRadius: radii.full,
+    },
     postBtnText: {
         color: '#fff',
+        fontWeight: typography.weights.bold,
         fontSize: typography.sizes.base,
-        fontWeight: '600',
     },
-    // Modal
+    // Modal Styles (Unchanged)
     modalOverlay: {
         flex: 1,
         backgroundColor: 'rgba(0,0,0,0.5)',
         justifyContent: 'flex-end',
     },
     modalContent: {
-        borderTopLeftRadius: 24,
-        borderTopRightRadius: 24,
-        padding: spacing.md,
-        maxHeight: '70%',
+        borderTopLeftRadius: radii.xl,
+        borderTopRightRadius: radii.xl,
+        maxHeight: '80%',
+        minHeight: '50%',
+        padding: spacing.lg,
     },
     modalHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: spacing.md,
+        marginBottom: spacing.lg,
     },
     modalTitle: {
-        fontSize: typography.sizes.xl,
-        fontWeight: '600',
+        fontSize: typography.sizes.lg,
+        fontWeight: typography.weights.bold,
     },
     workoutItem: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        paddingVertical: spacing.md,
-        borderBottomWidth: 1,
+        padding: spacing.md,
+        marginBottom: spacing.sm,
+        borderWidth: 1,
+        borderRadius: radii.lg,
     },
     workoutName: {
         fontSize: typography.sizes.base,
-        fontWeight: '500',
-    },
-    // New Styles
-    addPhotoContainer: {
-        padding: spacing.md,
-    },
-    addPhotoBtn: {
-        width: '100%',
-        aspectRatio: 1,
-        borderRadius: radii.lg,
-        borderWidth: 1,
-        borderStyle: 'dashed',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    attachWorkoutBtn: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: spacing.md,
-        marginHorizontal: spacing.md,
-        marginBottom: spacing.md,
-        borderRadius: radii.md,
-        borderWidth: 1,
-        borderStyle: 'dashed',
-        gap: 8,
-    },
-    attachWorkoutText: {
-        fontSize: typography.sizes.base,
-        fontWeight: '600',
+        fontWeight: typography.weights.medium,
+        marginBottom: 2,
     },
 });

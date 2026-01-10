@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     View,
     Text,
@@ -7,36 +7,41 @@ import {
     StyleSheet,
     ActivityIndicator,
     RefreshControl,
-    Image,
+    Image as RNImage,
     Alert,
     Share,
+    Modal,
+    Animated,
+    Dimensions,
+    PanResponder,
 } from 'react-native';
+import PagerView from 'react-native-pager-view';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Feather } from '@expo/vector-icons';
+import { Image as ExpoImage } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { useSquadEvents, SquadEvent, TrainingWorkout, EVENT_TYPES } from '../hooks/useSquadEvents';
 import { useEventWorkouts, ParticipantProgress } from '../hooks/useEventWorkouts';
-import { useActivityFeed } from '../hooks/useActivityFeed';
 import ScreenLayout from '../components/ScreenLayout';
-import FeedPostCard from '../components/FeedPostCard';
 import { spacing, radii, typography } from '../theme';
 import { RootStackParamList } from '../navigation';
+import { supabase } from '../lib/supabaseClient';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type EventDetailRouteProp = RouteProp<RootStackParamList, 'EventDetail'>;
 
-type TabType = 'overview' | 'training' | 'feed';
+type TabType = 'overview' | 'training';
 
 export default function EventDetailScreen() {
     const navigation = useNavigation<NavigationProp>();
     const route = useRoute<EventDetailRouteProp>();
     const { user } = useAuth();
     const { themeColors, colors: userColors } = useTheme();
-    const { getEventById, joinEvent, leaveEvent, getTrainingPlan } = useSquadEvents();
+    const { getEventById, joinEvent, leaveEvent, getTrainingPlan, updateEvent } = useSquadEvents();
     const { getParticipantProgress } = useEventWorkouts();
-    const { feed, loading: feedLoading, loadFeed, toggleLfg } = useActivityFeed();
 
     const [event, setEvent] = useState<SquadEvent | null>(null);
     const [trainingPlan, setTrainingPlan] = useState<TrainingWorkout[]>([]);
@@ -44,6 +49,64 @@ export default function EventDetailScreen() {
     const [activeTab, setActiveTab] = useState<TabType>('overview');
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [showMenu, setShowMenu] = useState(false);
+    const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
+    // Tab animation
+    const tabs: TabType[] = ['overview', 'training'];
+    const screenWidth = Dimensions.get('window').width;
+    const tabWidth = (screenWidth - spacing.md * 2) / tabs.length;
+
+    // PagerView animations for 1:1 finger tracking
+    const positionAnim = useRef(new Animated.Value(0)).current;
+    const offsetAnim = useRef(new Animated.Value(0)).current;
+    const pagerRef = useRef<PagerView>(null);
+
+    // Keep track of activeTab in a ref to avoid stale closures in PanResponder
+    const activeTabRef = useRef<TabType>('overview');
+    useEffect(() => {
+        activeTabRef.current = activeTab;
+    }, [activeTab]);
+
+    const onPageScroll = React.useMemo(() =>
+        Animated.event(
+            [{ nativeEvent: { position: positionAnim, offset: offsetAnim } }],
+            { useNativeDriver: false }
+        ),
+        []
+    );
+
+    // PanResponder for swipe gestures
+    const panResponder = useRef(
+        PanResponder.create({
+            onMoveShouldSetPanResponderCapture: (_, gestureState) => {
+                const isHorizontal = Math.abs(gestureState.dx) > Math.abs(gestureState.dy);
+                if (!isHorizontal) return false;
+
+                if (activeTabRef.current === 'overview' && gestureState.dx > 50) {
+                    return true;
+                }
+                return false;
+            },
+            onPanResponderRelease: (_, gestureState) => {
+                if (activeTabRef.current === 'overview' && gestureState.dx > 50) {
+                    navigation.goBack();
+                }
+            },
+        })
+    ).current;
+
+    // Handle tab press
+    const handleTabPress = (tab: TabType) => {
+        const index = tabs.indexOf(tab);
+        setActiveTab(tab);
+        pagerRef.current?.setPage(index);
+    };
+
+    const handlePageSelected = (e: any) => {
+        const index = e.nativeEvent.position;
+        setActiveTab(tabs[index]);
+    };
 
     const loadEventData = useCallback(async () => {
         const eventData = await getEventById(route.params.id);
@@ -56,11 +119,10 @@ export default function EventDetailScreen() {
             ]);
             setTrainingPlan(plan);
             setParticipants(progress);
-            loadFeed(eventData.id);
         }
 
         setLoading(false);
-    }, [route.params.id, getEventById, getTrainingPlan, getParticipantProgress, loadFeed]);
+    }, [route.params.id, getEventById, getTrainingPlan, getParticipantProgress]);
 
     useEffect(() => {
         loadEventData();
@@ -109,10 +171,6 @@ export default function EventDetailScreen() {
         });
     };
 
-    const handleLfg = async (postId: string) => {
-        await toggleLfg(postId);
-    };
-
     const handleInvite = async () => {
         if (!event) return;
 
@@ -146,6 +204,77 @@ export default function EventDetailScreen() {
             eventName: event.name,
             eventDate: event.event_date
         });
+    };
+
+    const handleUpdatePhoto = async () => {
+        if (!event) return;
+
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            quality: 0.8,
+            allowsEditing: true, // Square crop on iOS, custom aspect on Android
+            aspect: [16, 9],
+        });
+
+        if (!result.canceled && result.assets && result.assets.length > 0) {
+            setUploadingPhoto(true);
+            try {
+                const asset = result.assets[0];
+                const fileExt = asset.uri.split('.').pop()?.split('?')[0] || 'jpg';
+                const fileName = `event-${event.id}-${Date.now()}.${fileExt}`;
+                const filePath = `event-covers/${fileName}`;
+
+                // Fetch the image and convert to arraybuffer (more reliable in React Native)
+                const response = await fetch(asset.uri);
+                const arrayBuffer = await response.arrayBuffer();
+
+                console.log('Uploading to path:', filePath);
+                console.log('ArrayBuffer size:', arrayBuffer.byteLength);
+
+                // Upload to Supabase storage
+                const { data: uploadData, error: uploadError } = await supabase.storage
+                    .from('activity-photos')
+                    .upload(filePath, arrayBuffer, {
+                        contentType: `image/${fileExt === 'jpg' ? 'jpeg' : fileExt}`,
+                        upsert: true,
+                    });
+
+                if (uploadError) {
+                    console.error('Upload error:', uploadError);
+                    throw uploadError;
+                }
+
+                console.log('Upload success:', uploadData);
+
+                // Get public URL
+                const { data: urlData } = supabase.storage
+                    .from('activity-photos')
+                    .getPublicUrl(filePath);
+
+                console.log('Public URL:', urlData.publicUrl);
+
+                // Update event with new cover URL
+                console.log('Calling updateEvent with:', { cover_image_url: urlData.publicUrl });
+                const { error } = await updateEvent(event.id, {
+                    cover_image_url: urlData.publicUrl,
+                });
+
+                console.log('updateEvent result - error:', error);
+
+                if (error) {
+                    Alert.alert('Error', error);
+                } else {
+                    console.log('Reloading event data...');
+                    await loadEventData();
+                    console.log('Event data reloaded, cover_image_url:', event?.cover_image_url);
+                }
+            } catch (err: any) {
+                console.error('Upload error:', err);
+                Alert.alert('Error', 'Failed to upload photo');
+            } finally {
+                setUploadingPhoto(false);
+            }
+        }
     };
 
     if (loading) {
@@ -234,7 +363,7 @@ export default function EventDetailScreen() {
                                 </Text>
                             </View>
                             {participant.avatar_url ? (
-                                <Image
+                                <RNImage
                                     source={{ uri: participant.avatar_url }}
                                     style={styles.participantAvatar}
                                 />
@@ -358,53 +487,23 @@ export default function EventDetailScreen() {
         </View>
     );
 
-    const renderFeedTab = () => (
-        <View style={styles.tabContent}>
-            {feedLoading ? (
-                <ActivityIndicator size="large" color={userColors.accent_color} style={styles.feedLoader} />
-            ) : feed.length > 0 ? (
-                feed.map(post => (
-                    <FeedPostCard
-                        key={post.id}
-                        post={post}
-                        onLfg={() => handleLfg(post.id)}
-                        onComment={() => {/* TODO: Open comments */ }}
-                    />
-                ))
-            ) : (
-                <View style={styles.emptyState}>
-                    <Feather name="message-square" size={48} color={themeColors.textMuted} />
-                    <Text style={[styles.emptyTitle, { color: themeColors.textSecondary }]}>
-                        No Activity Yet
-                    </Text>
-                    <Text style={[styles.emptyText, { color: themeColors.textMuted }]}>
-                        Complete a workout and share it to get things started!
-                    </Text>
-                </View>
-            )}
-        </View>
-    );
-
     return (
         <ScreenLayout hideHeader>
-            <ScrollView
+            <View
                 style={styles.container}
-                contentContainerStyle={styles.contentContainer}
-                refreshControl={
-                    <RefreshControl
-                        refreshing={refreshing}
-                        onRefresh={handleRefresh}
-                        tintColor={userColors.accent_color}
-                    />
-                }
-                showsVerticalScrollIndicator={false}
+                collapsable={false}
+                {...panResponder.panHandlers}
             >
                 {/* Event Header */}
                 <View style={[styles.header, { backgroundColor: themeColors.bgSecondary }]}>
                     {event.cover_image_url ? (
-                        <Image
+                        <ExpoImage
+                            key={event.cover_image_url}
                             source={{ uri: event.cover_image_url }}
                             style={styles.coverImage}
+                            contentFit="cover"
+                            cachePolicy="memory-disk"
+                            transition={200}
                         />
                     ) : (
                         <View style={[styles.coverPlaceholder, { backgroundColor: `${userColors.accent_color}30` }]}>
@@ -413,95 +512,103 @@ export default function EventDetailScreen() {
                     )}
 
                     <View style={styles.headerContent}>
-                        <View style={styles.typeRow}>
-                            <View style={[styles.typeBadge, { backgroundColor: `${userColors.accent_color}20` }]}>
-                                <Feather name={eventType.icon as any} size={14} color={userColors.accent_color} />
-                                <Text style={[styles.typeText, { color: userColors.accent_color }]}>
-                                    {eventType.name}
-                                </Text>
-                            </View>
-                            {event.is_private && (
-                                <View style={[styles.privateBadge, { backgroundColor: themeColors.bgTertiary }]}>
-                                    <Feather name="lock" size={12} color={themeColors.textSecondary} />
-                                    <Text style={[styles.privateText, { color: themeColors.textSecondary }]}>Private</Text>
+                        {/* Top row: Type badges + Action buttons */}
+                        <View style={styles.headerTopRow}>
+                            <View style={styles.typeBadges}>
+                                <View style={[styles.typeBadge, { backgroundColor: `${userColors.accent_color}20` }]}>
+                                    <Feather name={eventType.icon as any} size={14} color={userColors.accent_color} />
+                                    <Text style={[styles.typeText, { color: userColors.accent_color }]}>
+                                        {eventType.name}
+                                    </Text>
                                 </View>
-                            )}
+                                {event.is_private && (
+                                    <View style={[styles.privateBadge, { backgroundColor: themeColors.bgTertiary }]}>
+                                        <Feather name="lock" size={12} color={themeColors.textSecondary} />
+                                        <Text style={[styles.privateText, { color: themeColors.textSecondary }]}>Private</Text>
+                                    </View>
+                                )}
+                            </View>
+
+                            {/* Action buttons on right */}
+                            <View style={styles.actionRow}>
+                                {event.is_participating && (
+                                    <View style={[styles.participatingBadge, { backgroundColor: `${userColors.accent_color}20` }]}>
+                                        <Feather name="check-circle" size={14} color={userColors.accent_color} />
+                                        <Text style={[styles.participatingText, { color: userColors.accent_color }]}>Joined</Text>
+                                    </View>
+                                )}
+                                <Pressable
+                                    style={[styles.shareButton, { backgroundColor: themeColors.bgTertiary }]}
+                                    onPress={handleInvite}
+                                >
+                                    <Feather name="share" size={18} color={themeColors.textPrimary} />
+                                </Pressable>
+                                <Pressable
+                                    style={[styles.menuButton, { backgroundColor: themeColors.bgTertiary }]}
+                                    onPress={() => setShowMenu(true)}
+                                >
+                                    <Feather name="more-horizontal" size={20} color={themeColors.textPrimary} />
+                                </Pressable>
+                            </View>
                         </View>
 
                         <Text style={[styles.eventName, { color: themeColors.textPrimary }]}>
                             {event.name}
                         </Text>
 
-                        <View style={styles.eventMeta}>
-                            <View style={styles.metaItem}>
-                                <Feather name="calendar" size={16} color={themeColors.textSecondary} />
-                                <Text style={[styles.metaText, { color: themeColors.textSecondary }]}>
-                                    {eventDate.toLocaleDateString('en-US', {
-                                        month: 'long',
-                                        day: 'numeric',
-                                        year: 'numeric'
-                                    })}
-                                </Text>
+                        {/* Event meta + Join button row */}
+                        <View style={styles.metaJoinRow}>
+                            <View style={styles.eventMeta}>
+                                <View style={styles.metaItem}>
+                                    <Feather name="calendar" size={16} color={themeColors.textSecondary} />
+                                    <Text style={[styles.metaText, { color: themeColors.textSecondary }]}>
+                                        {eventDate.toLocaleDateString('en-US', {
+                                            month: 'short',
+                                            day: 'numeric',
+                                            year: 'numeric'
+                                        })}
+                                    </Text>
+                                </View>
+                                <View style={styles.metaItem}>
+                                    <Feather name="clock" size={16} color={daysUntil <= 7 ? '#ef4444' : themeColors.textSecondary} />
+                                    <Text style={[
+                                        styles.metaText,
+                                        { color: daysUntil <= 7 ? '#ef4444' : themeColors.textSecondary }
+                                    ]}>
+                                        {daysUntil <= 0 ? 'Event passed' : `${daysUntil} days`}
+                                    </Text>
+                                </View>
+                                <View style={styles.metaItem}>
+                                    <Feather name="users" size={16} color={themeColors.textSecondary} />
+                                    <Text style={[styles.metaText, { color: themeColors.textSecondary }]}>
+                                        {participants.length}
+                                    </Text>
+                                </View>
                             </View>
-                            <View style={styles.metaItem}>
-                                <Feather name="clock" size={16} color={themeColors.textSecondary} />
-                                <Text style={[
-                                    styles.metaText,
-                                    { color: daysUntil <= 7 ? '#ef4444' : themeColors.textSecondary }
-                                ]}>
-                                    {daysUntil <= 0 ? 'Event passed' : `${daysUntil} days left`}
-                                </Text>
-                            </View>
-                            <View style={styles.metaItem}>
-                                <Feather name="users" size={16} color={themeColors.textSecondary} />
-                                <Text style={[styles.metaText, { color: themeColors.textSecondary }]}>
-                                    {participants.length} participants
-                                </Text>
-                            </View>
+
+                            {/* Join button on right if not participating */}
+                            {!event.is_participating && (
+                                <Pressable
+                                    style={[styles.joinButton, { backgroundColor: userColors.accent_color }]}
+                                    onPress={handleJoin}
+                                >
+                                    <Feather name="plus" size={16} color={themeColors.accentText} />
+                                    <Text style={[styles.joinButtonText, { color: themeColors.accentText }]}>
+                                        Join
+                                    </Text>
+                                </Pressable>
+                            )}
                         </View>
-
-                        {/* Join/Leave Button */}
-                        {event.is_participating ? (
-                            <Pressable
-                                style={[styles.leaveButton, { borderColor: '#ef4444' }]}
-                                onPress={handleLeave}
-                            >
-                                <Text style={[styles.leaveButtonText, { color: '#ef4444' }]}>
-                                    Leave Event
-                                </Text>
-                            </Pressable>
-                        ) : (
-                            <Pressable
-                                style={[styles.joinButton, { backgroundColor: userColors.accent_color }]}
-                                onPress={handleJoin}
-                            >
-                                <Feather name="plus" size={20} color={themeColors.accentText} />
-                                <Text style={[styles.joinButtonText, { color: themeColors.accentText }]}>
-                                    Join Event
-                                </Text>
-                            </Pressable>
-                        )}
-
-                        {/* Invite Button */}
-                        <Pressable
-                            style={[styles.inviteButton, { borderColor: themeColors.divider }]}
-                            onPress={handleInvite}
-                        >
-                            <Feather name="share-2" size={20} color={themeColors.textPrimary} />
-                        </Pressable>
                     </View>
                 </View>
 
-                {/* Tabs */}
+                {/* Tabs with Animated Underline */}
                 <View style={[styles.tabs, { borderBottomColor: themeColors.divider }]}>
-                    {(['overview', 'training', 'feed'] as TabType[]).map(tab => (
+                    {tabs.map((tab) => (
                         <Pressable
                             key={tab}
-                            style={[
-                                styles.tab,
-                                activeTab === tab && { borderBottomColor: userColors.accent_color }
-                            ]}
-                            onPress={() => setActiveTab(tab)}
+                            style={styles.tab}
+                            onPress={() => handleTabPress(tab)}
                         >
                             <Text style={[
                                 styles.tabText,
@@ -511,22 +618,153 @@ export default function EventDetailScreen() {
                             </Text>
                         </Pressable>
                     ))}
+                    <Animated.View
+                        style={[
+                            styles.tabUnderline,
+                            {
+                                width: tabWidth,
+                                backgroundColor: userColors.accent_color,
+                                transform: [{
+                                    translateX: Animated.add(positionAnim, offsetAnim).interpolate({
+                                        inputRange: [0, 1],
+                                        outputRange: [0, tabWidth],
+                                    })
+                                }],
+                            }
+                        ]}
+                    />
                 </View>
 
-                {/* Tab Content */}
-                {activeTab === 'overview' && renderOverviewTab()}
-                {activeTab === 'training' && renderTrainingTab()}
-                {activeTab === 'feed' && renderFeedTab()}
-            </ScrollView>
-
-            {/* FAB for Feed */}
-            {activeTab === 'feed' && event.is_participating && (
-                <Pressable
-                    style={[styles.fab, { backgroundColor: userColors.accent_color }]}
-                    onPress={handleCreatePost}
+                {/* Swipeable Tab Content via PagerView */}
+                <PagerView
+                    ref={pagerRef}
+                    style={{ flex: 1 }}
+                    initialPage={0}
+                    onPageSelected={handlePageSelected}
+                    onPageScroll={onPageScroll}
                 >
-                    <Feather name="plus" size={24} color="#fff" />
+                    <View key="0" style={{ flex: 1 }}>
+                        <ScrollView
+                            style={{ flex: 1 }}
+                            showsVerticalScrollIndicator={false}
+                            contentContainerStyle={{ paddingBottom: 100 }}
+                            refreshControl={
+                                <RefreshControl
+                                    refreshing={refreshing}
+                                    onRefresh={handleRefresh}
+                                    tintColor={userColors.accent_color}
+                                />
+                            }
+                        >
+                            {renderOverviewTab()}
+                        </ScrollView>
+                    </View>
+                    <View key="1" style={{ flex: 1 }}>
+                        <ScrollView
+                            showsVerticalScrollIndicator={false}
+                            contentContainerStyle={{ paddingBottom: 100 }}
+                        >
+                            {renderTrainingTab()}
+                        </ScrollView>
+                    </View>
+                </PagerView>
+            </View>
+
+            {/* 3-Dot Menu Modal */}
+            <Modal
+                visible={showMenu}
+                transparent
+                animationType="slide"
+                onRequestClose={() => setShowMenu(false)}
+            >
+                <Pressable style={styles.menuOverlay} onPress={() => setShowMenu(false)}>
+                    <View style={[styles.menuContent, { backgroundColor: themeColors.bgPrimary }]}>
+                        <View style={[styles.menuHandle, { backgroundColor: themeColors.textMuted }]} />
+
+                        {/* Leave Event (only if participating) */}
+                        {event.is_participating && (
+                            <Pressable
+                                style={styles.menuOption}
+                                onPress={() => {
+                                    setShowMenu(false);
+                                    handleLeave();
+                                }}
+                            >
+                                <Feather name="log-out" size={20} color="#ef4444" />
+                                <Text style={[styles.menuOptionText, { color: '#ef4444' }]}>Leave Event</Text>
+                            </Pressable>
+                        )}
+
+                        {/* Edit Event (only if creator) */}
+                        {event.creator_id === user?.id && (
+                            <>
+                                <Pressable
+                                    style={styles.menuOption}
+                                    onPress={() => {
+                                        setShowMenu(false);
+                                        handleUpdatePhoto();
+                                    }}
+                                >
+                                    <Feather name="image" size={20} color={themeColors.textPrimary} />
+                                    <Text style={[styles.menuOptionText, { color: themeColors.textPrimary }]}>Update Event Photo</Text>
+                                </Pressable>
+                                <Pressable
+                                    style={styles.menuOption}
+                                    onPress={() => {
+                                        setShowMenu(false);
+                                        handleEditPlan();
+                                    }}
+                                >
+                                    <Feather name="edit-2" size={20} color={themeColors.textPrimary} />
+                                    <Text style={[styles.menuOptionText, { color: themeColors.textPrimary }]}>Manage Training Plan</Text>
+                                </Pressable>
+                                <Pressable
+                                    style={styles.menuOption}
+                                    onPress={() => {
+                                        setShowMenu(false);
+                                        Alert.alert(
+                                            'Delete Event',
+                                            'Are you sure you want to delete this event? This cannot be undone.',
+                                            [
+                                                { text: 'Cancel', style: 'cancel' },
+                                                {
+                                                    text: 'Delete',
+                                                    style: 'destructive',
+                                                    onPress: async () => {
+                                                        // TODO: Add deleteEvent to hook
+                                                        navigation.goBack();
+                                                    }
+                                                },
+                                            ]
+                                        );
+                                    }}
+                                >
+                                    <Feather name="trash-2" size={20} color="#ef4444" />
+                                    <Text style={[styles.menuOptionText, { color: '#ef4444' }]}>Delete Event</Text>
+                                </Pressable>
+                            </>
+                        )}
+
+                        {/* Cancel */}
+                        <Pressable
+                            style={styles.menuOption}
+                            onPress={() => setShowMenu(false)}
+                        >
+                            <Feather name="x" size={20} color={themeColors.textMuted} />
+                            <Text style={[styles.menuOptionText, { color: themeColors.textMuted }]}>Cancel</Text>
+                        </Pressable>
+                    </View>
                 </Pressable>
+            </Modal>
+
+            {/* Loading Overlay for Photo Upload */}
+            {uploadingPhoto && (
+                <View style={styles.loadingOverlay}>
+                    <ActivityIndicator size="large" color={userColors.accent_color} />
+                    <Text style={[styles.loadingText, { color: themeColors.textPrimary }]}>
+                        Uploading photo...
+                    </Text>
+                </View>
             )}
         </ScreenLayout>
     );
@@ -567,7 +805,21 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     headerContent: {
-        padding: spacing.md,
+        paddingHorizontal: spacing.md,
+        paddingTop: spacing.md,
+        paddingBottom: spacing.md,
+    },
+    headerTopRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: spacing.sm,
+    },
+    typeBadges: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing.sm,
+        flexWrap: 'wrap',
     },
     typeRow: {
         flexDirection: 'row',
@@ -577,10 +829,10 @@ const styles = StyleSheet.create({
     typeBadge: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingVertical: spacing.xs,
-        paddingHorizontal: spacing.sm,
+        height: 36,
+        paddingHorizontal: spacing.md,
         borderRadius: radii.full,
-        gap: 4,
+        gap: spacing.xs,
     },
     typeText: {
         fontSize: typography.sizes.sm,
@@ -602,9 +854,14 @@ const styles = StyleSheet.create({
         fontWeight: typography.weights.bold,
         marginBottom: spacing.sm,
     },
+    metaJoinRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
     eventMeta: {
-        gap: spacing.xs,
-        marginBottom: spacing.md,
+        flexDirection: 'row',
+        gap: spacing.md,
     },
     metaItem: {
         flexDirection: 'row',
@@ -646,12 +903,22 @@ const styles = StyleSheet.create({
         flex: 1,
         paddingVertical: spacing.md,
         alignItems: 'center',
-        borderBottomWidth: 2,
-        borderBottomColor: 'transparent',
     },
     tabText: {
         fontSize: typography.sizes.base,
         fontWeight: typography.weights.medium,
+    },
+    tabUnderline: {
+        position: 'absolute',
+        bottom: 0,
+        height: 2,
+        borderRadius: 1,
+    },
+    tabContentScrollView: {
+        flex: 1,
+    },
+    tabContentInner: {
+        flex: 1,
     },
     tabContent: {
         padding: spacing.md,
@@ -846,5 +1113,77 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.25,
         shadowRadius: 4,
+    },
+    actionRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing.sm,
+    },
+    shareButton: {
+        width: 36,
+        height: 36,
+        borderRadius: radii.full,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    menuButton: {
+        width: 36,
+        height: 36,
+        borderRadius: radii.full,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    participatingBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        height: 36,
+        paddingHorizontal: spacing.md,
+        borderRadius: radii.full,
+        gap: spacing.xs,
+    },
+    participatingText: {
+        fontSize: typography.sizes.sm,
+        fontWeight: typography.weights.medium,
+    },
+    // Menu modal styles
+    menuOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'flex-end',
+    },
+    menuContent: {
+        borderTopLeftRadius: radii.xl,
+        borderTopRightRadius: radii.xl,
+        paddingBottom: spacing.xl,
+    },
+    menuHandle: {
+        width: 40,
+        height: 4,
+        borderRadius: 2,
+        alignSelf: 'center',
+        marginVertical: spacing.md,
+    },
+    menuOption: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: spacing.md,
+        paddingHorizontal: spacing.lg,
+        gap: spacing.md,
+    },
+    menuOptionText: {
+        fontSize: typography.sizes.base,
+        fontWeight: typography.weights.medium,
+    },
+    loadingOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 1000,
+    },
+    loadingText: {
+        marginTop: spacing.md,
+        fontSize: typography.sizes.base,
+        fontWeight: typography.weights.medium,
     },
 });

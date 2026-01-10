@@ -53,6 +53,12 @@ export interface FeedPost {
             exercise?: {
                 name: string;
             };
+            sets?: Array<{
+                id: string;
+                weight: number;
+                reps: number;
+                is_completed: boolean;
+            }>;
         }>;
     };
     has_lfg?: boolean; // Whether current user has LFG'd this post
@@ -123,7 +129,8 @@ export function useActivityFeed() {
                         workout_exercises(
                             id,
                             order_index,
-                            exercise:exercises(name)
+                            exercise:exercises(name),
+                            sets(id, weight, reps, is_completed)
                         )
                     )
                 `)
@@ -132,6 +139,13 @@ export function useActivityFeed() {
 
             if (eventId) {
                 query = query.eq('event_id', eventId);
+            } else {
+                // If no eventId, only show posts from my Squad (and myself)
+                // Filter by users in my squad (accepted status)
+                const { data: squadIds } = await supabase.rpc('get_squad_ids', { p_user_id: user.id });
+                const allowedIds = [user.id, ...(squadIds?.map((c: any) => c.member_id) || [])];
+
+                query = query.in('user_id', allowedIds);
             }
 
             const { data, error: fetchError } = await query;

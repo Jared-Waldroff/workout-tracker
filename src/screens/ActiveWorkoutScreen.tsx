@@ -143,7 +143,41 @@ export default function ActiveWorkoutScreen() {
         });
     }, []);
 
-    // Add exercise to workout
+    // Handle new set added - updates total sets count
+    const handleSetAdd = useCallback((newSet: any) => {
+        setWorkout((prev: any) => {
+            if (!prev?.workout_exercises) return prev;
+
+            return {
+                ...prev,
+                workout_exercises: prev.workout_exercises.map((we: any) => {
+                    if (we.id === newSet.workout_exercise_id) {
+                        return {
+                            ...we,
+                            sets: [...(we.sets || []), newSet]
+                        };
+                    }
+                    return we;
+                })
+            };
+        });
+    }, []);
+
+    // Handle set deleted - updates total sets count
+    const handleSetDelete = useCallback((setId: string) => {
+        setWorkout((prev: any) => {
+            if (!prev?.workout_exercises) return prev;
+
+            return {
+                ...prev,
+                workout_exercises: prev.workout_exercises.map((we: any) => ({
+                    ...we,
+                    sets: we.sets?.filter((s: any) => s.id !== setId)
+                }))
+            };
+        });
+    }, []);
+
     const handleAddExercise = async (exerciseId: string) => {
         setAddingExercise(true);
         try {
@@ -286,14 +320,20 @@ export default function ActiveWorkoutScreen() {
     const handleCompleteClick = () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
+        // If explicitly clicking the button to complete, or uncomplete, we should just follow user intent
+        // The user asked "when i click complete woprkout it shjould take me back to the home page"
+
         if (workout.is_completed) {
-            // Ask confirmation when marking as incomplete
+            // Already completed -> Toggle off or ask?
+            // "click complete woprkout... take me back" implies the button when it's NOT done or when it IS done?
+            // Assuming the main "Complete" action.
+            // If it's already completed, the button says "Mark as Incomplete".
             setShowCompleteConfirm(true);
         } else if (!allSetsComplete) {
             // Show warning if not all sets complete
             setShowIncompleteWarning(true);
         } else {
-            // All sets complete - just complete without asking
+            // Complete safely
             handleCompleteWorkout();
         }
     };
@@ -347,32 +387,7 @@ export default function ActiveWorkoutScreen() {
 
     return (
         <ScreenLayout hideHeader>
-            {/* Title Bar */}
-            <View style={[styles.titleBar, { borderBottomColor: themeColors.glassBorder }]}>
-                <Pressable
-                    style={styles.backButton}
-                    onPress={() => navigation.goBack()}
-                >
-                    <Feather name="chevron-left" size={24} color={themeColors.textPrimary} />
-                </Pressable>
-                <View style={styles.titleInfo}>
-                    <Text style={[styles.titleText, { color: themeColors.textPrimary }]} numberOfLines={1}>
-                        {workout.name}
-                    </Text>
-                    <Text style={[styles.dateText, { color: themeColors.textTertiary }]}>
-                        {formatDate(workout.scheduled_date)}
-                    </Text>
-                </View>
-                <Pressable
-                    style={styles.deleteButton}
-                    onPress={() => {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        setShowDeleteConfirm(true);
-                    }}
-                >
-                    <Feather name="trash-2" size={20} color={themeColors.textPrimary} />
-                </Pressable>
-            </View>
+            {/* Header Removed as per user request */}
 
             <ScrollView
                 style={styles.content}
@@ -393,7 +408,13 @@ export default function ActiveWorkoutScreen() {
                 {/* Exercises */}
                 <View style={styles.exercisesList}>
                     {workout.workout_exercises?.map((we: any) => (
-                        <ExerciseSection key={we.id} workoutExercise={we} onSetToggle={handleSetToggle} />
+                        <ExerciseSection
+                            key={we.id}
+                            workoutExercise={we}
+                            onSetToggle={handleSetToggle}
+                            onSetAdd={handleSetAdd}
+                            onSetDelete={handleSetDelete}
+                        />
                     ))}
                 </View>
 

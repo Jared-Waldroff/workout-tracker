@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Pressable, Text, Animated, Dimensions } from 'react-native';
-import { NavigationContainer, DarkTheme, getFocusedRouteNameFromRoute, NavigatorScreenParams } from '@react-navigation/native';
+import { NavigationContainer, DarkTheme, getFocusedRouteNameFromRoute, NavigatorScreenParams, LinkingOptions } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
 import { Feather } from '@expo/vector-icons';
@@ -11,6 +11,7 @@ import { MIN_TOUCH_TARGET } from '../theme';
 import AppHeader from '../components/AppHeader';
 import StatusBarGlow from '../components/StatusBarGlow';
 import { StatusBar } from 'expo-status-bar';
+import * as Linking from 'expo-linking';
 
 // Screens
 import LoginScreen from '../screens/LoginScreen';
@@ -39,7 +40,7 @@ import ManageEventPlanScreen from '../screens/ManageEventPlanScreen';
 // Type definitions for navigation
 export type RootStackParamList = {
     Auth: undefined;
-    Main: undefined;
+    Main: NavigatorScreenParams<MainTabParamList>; // Updated for nested linking
     Login: undefined;
     Onboarding: undefined;
     CreateWorkout: { date?: string };
@@ -64,7 +65,7 @@ export type MainTabParamList = {
     Calendar: undefined;
     Exercises: undefined;
     Coach: undefined;
-    Squad: { screen: 'SquadMain', params?: { initialTab: 'events' } };
+    Squad: NavigatorScreenParams<SquadStackParamList>; // Updated for nested linking
     SettingsTab: undefined;
     NotificationsTab: undefined;
 };
@@ -408,8 +409,42 @@ export default function Navigation() {
         return null;
     }
 
+    const linking: LinkingOptions<RootStackParamList> = {
+        prefixes: [Linking.createURL('/'), 'https://hybrid.app'],
+        config: {
+            screens: {
+                Main: {
+                    screens: {
+                        Squad: {
+                            screens: {
+                                SquadMain: {
+                                    path: 'join/:inviteCode',
+                                },
+                            },
+                        },
+                    },
+                },
+                // Add other root screens if needed for type safety, but optional
+                CreateWorkout: 'create-workout',
+                ActiveWorkout: 'workout/:id',
+                ExerciseDetail: 'exercise/:id',
+                CrossFitWorkout: 'crossfit/:id',
+                AthleteProfile: 'profile/:id',
+                Notifications: 'notifications',
+                NotificationSettings: 'notification-settings',
+                Settings: 'settings',
+                SquadEvents: 'squad-events',
+                EventDetail: 'event/:id',
+                ActivityFeed: 'feed/:eventId',
+                CreatePost: 'create-post',
+                ManageEventPlan: 'manage-plan/:eventId',
+                CompleteEventWorkout: 'complete-workout/:eventId/:trainingWorkoutId',
+            },
+        },
+    };
+
     return (
-        <NavigationContainer theme={DarkTheme}>
+        <NavigationContainer theme={DarkTheme} linking={linking}>
             {user ? <AppStackWithHeader /> : <AuthStack />}
         </NavigationContainer>
     );

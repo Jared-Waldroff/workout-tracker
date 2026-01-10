@@ -75,11 +75,11 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
             // Navigate based on notification type
             if (data?.type === 'workout_reminder' && data?.eventId) {
                 // Navigate to event detail
-                navigation.navigate('EventDetail' as never, { id: data.eventId } as never);
+                (navigation as any).navigate('EventDetail', { id: data.eventId });
             } else if (data?.type === 'check_in' && data?.eventId) {
-                navigation.navigate('EventDetail' as never, { id: data.eventId } as never);
+                (navigation as any).navigate('EventDetail', { id: data.eventId });
             } else if (data?.type === 'squad_activity') {
-                navigation.navigate('ActivityFeed' as never);
+                (navigation as any).navigate('ActivityFeed');
             }
         };
 

@@ -32,6 +32,7 @@ import FeedPostCard from '../components/FeedPostCard';
 import EventCard from '../components/EventCard';
 import { useActivityFeed, FeedPost } from '../hooks/useActivityFeed';
 import { useSquadEvents, SquadEvent } from '../hooks/useSquadEvents';
+import { useSquad, SquadMember } from '../hooks/useSquad';
 import { spacing, radii, typography } from '../theme';
 import { RootStackParamList } from '../navigation';
 import { SquadStackParamList } from '../navigation';
@@ -40,19 +41,8 @@ import { SquadStackParamList } from '../navigation';
 type NavigationProp = NativeStackNavigationProp<RootStackParamList & SquadStackParamList>;
 type TabType = 'feed' | 'events' | 'members';
 
-interface Connection {
-    id: string;
-    following?: {
-        id: string;
-        email: string;
-        athlete_profiles?: { display_name?: string; avatar_url?: string; bio?: string }[];
-    };
-    follower?: {
-        id: string;
-        email: string;
-        athlete_profiles?: { display_name?: string; avatar_url?: string; bio?: string }[];
-    };
-}
+// Connection interface removed in favor of CrewMember
+// interface Connection { ... }
 
 interface SearchResult {
     user_id: string;
@@ -86,12 +76,52 @@ export default function SquadScreen({ route }: any) {
         }
     }, [route?.params?.initialTab]);
 
-    // Connections state
-    const [membersTab, setMembersTab] = useState<'squad' | 'followers' | 'requests'>('squad');
-    const [following, setFollowing] = useState<Connection[]>([]);
-    const [followers, setFollowers] = useState<Connection[]>([]);
-    const [pendingRequests, setPendingRequests] = useState<Connection[]>([]);
-    const [connectionsLoading, setConnectionsLoading] = useState(true);
+    // Handle Deep Link Invite
+    useEffect(() => {
+        if (route?.params?.inviteCode && user) {
+            const code = route.params.inviteCode;
+            // Verify code and prompt
+            (async () => {
+                try {
+                    const { data, error } = await supabase.rpc('get_user_by_invite_code', { invite_code_input: code });
+                    if (error) throw error;
+                    if (data && data.length > 0) {
+                        const inviter = data[0]; // { user_id, display_name, ... }
+                        if (inviter.user_id === user.id) {
+                            Alert.alert('Squad', 'You cannot join your own squad!');
+                            return;
+                        }
+
+                        Alert.alert(
+                            'Join Squad',
+                            `Do you want to join ${inviter.display_name}'s Squad?`,
+                            [
+                                { text: 'Cancel', style: 'cancel' },
+                                {
+                                    text: 'Join',
+                                    onPress: () => handleAddSquad(inviter.user_id)
+                                }
+                            ]
+                        );
+                    } else {
+                        Alert.alert('Error', 'Invalid invite code.');
+                    }
+                } catch (err) {
+                    console.error('Invite check failed:', err);
+                    Alert.alert('Error', 'Failed to verify invite link.');
+                }
+            })();
+            // Clear param to prevent loop? (Navigation preserves params unless replaced)
+            // Maybe navigation.setParams({ inviteCode: undefined })?
+            // navigation.setParams({ inviteCode: undefined });
+        }
+    }, [route?.params?.inviteCode, user]);
+
+    // Squad state
+    const [membersTab, setMembersTab] = useState<'squad' | 'requests'>('squad');
+    const { squad, requests, loading: squadLoading, loadSquad, addSquadMember, acceptSquadRequest, removeSquadMember, searchUsers } = useSquad();
+    // derived state for compatibility if needed, or used directly
+
 
     // Activity Feed
     const { feed, loading: feedLoading, loadFeed, toggleLfg, deletePost } = useActivityFeed();
@@ -171,85 +201,19 @@ export default function SquadScreen({ route }: any) {
 
     useEffect(() => {
         if (user) {
-            loadConnections();
-            loadInviteCode();
             loadInviteCode();
             loadFeed();
         }
     }, [user]);
 
     // Refresh feed when screen comes into focus
-    // Refresh feed when screen comes into focus - REMOVED per user request
-    /*
-    useFocusEffect(
-        useCallback(() => {
-            if (user) {
-                loadFeed();
-            }
-        }, [user, loadFeed])
-    );
-    */
+    // ... removed legacy focus effect
 
-    const loadConnections = async () => {
-        setConnectionsLoading(true);
-        try {
-            // Load people I follow (my squad)
-            const { data: followingData } = await supabase
-                .from('connections')
-                .select(`
-                    id, 
-                    following:following_id (
-                        id, 
-                        email,
-                        athlete_profiles (display_name, avatar_url, bio)
-                    )
-                `)
-                .eq('follower_id', user?.id)
-                .eq('status', 'accepted');
-
-            // Load my followers
-            const { data: followersData } = await supabase
-                .from('connections')
-                .select(`
-                    id, 
-                    follower:follower_id (
-                        id, 
-                        email,
-                        athlete_profiles (display_name, avatar_url, bio)
-                    )
-                `)
-                .eq('following_id', user?.id)
-                .eq('status', 'accepted');
-
-            // Load pending requests (people wanting to follow me)
-            const { data: requestsData } = await supabase
-                .from('connections')
-                .select(`
-                    id, 
-                    follower:follower_id (
-                        id, 
-                        email,
-                        athlete_profiles (display_name, avatar_url, bio)
-                    )
-                `)
-                .eq('following_id', user?.id)
-                .eq('status', 'pending');
-
-            setFollowing(followingData as any || []);
-            setFollowers(followersData as any || []);
-            setPendingRequests(requestsData as any || []);
-        } catch (err) {
-            console.error('Error loading connections:', err);
-        } finally {
-            setConnectionsLoading(false);
-        }
-    };
 
     const handleRefresh = async () => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         setRefreshing(true);
         await Promise.all([
-            loadConnections(),
+            loadSquad(),
             loadFeed(),
             loadEvents(),
         ]);
@@ -277,14 +241,15 @@ export default function SquadScreen({ route }: any) {
 
         setSearching(true);
         try {
-            const { data } = await supabase
-                .from('athlete_profiles')
-                .select('user_id, username, display_name, avatar_url, is_private')
-                .or(`username.ilike.%${query}%,display_name.ilike.%${query}%`)
-                .neq('user_id', user?.id)
-                .limit(10);
-
-            setSearchResults(data || []);
+            const results = await searchUsers(query);
+            // Map RPC results to SearchResult interface
+            setSearchResults(results.map((r: any) => ({
+                user_id: r.user_id,
+                username: r.username,
+                display_name: r.display_name,
+                avatar_url: r.avatar_url,
+                is_private: false // Default to logic handled in hook
+            })));
         } catch (err) {
             console.error('Error searching users:', err);
         } finally {
@@ -292,53 +257,34 @@ export default function SquadScreen({ route }: any) {
         }
     };
 
-    const handleFollow = async (userId: string) => {
+    const handleAddSquad = async (userId: string) => {
         await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        try {
-            const { error } = await supabase
-                .from('connections')
-                .insert({
-                    follower_id: user?.id,
-                    following_id: userId,
-                    status: 'pending'
-                });
+        const { error } = await addSquadMember(userId);
 
-            if (!error) {
-                setSearchResults(prev => prev.filter(u => u.user_id !== userId));
-                await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                Alert.alert('Request Sent', 'Your follow request has been sent!');
-            }
-        } catch (err) {
-            console.error('Error following user:', err);
-        }
-    };
-
-    const handleAcceptRequest = async (connectionId: string) => {
-        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        try {
-            await supabase
-                .from('connections')
-                .update({ status: 'accepted' })
-                .eq('id', connectionId);
-
-            await loadConnections();
+        if (!error) {
+            setSearchResults(prev => prev.filter(u => u.user_id !== userId));
             await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        } catch (err) {
-            console.error('Error accepting request:', err);
+            Alert.alert('Request Sent', 'Squad invitation sent!');
+        } else {
+            Alert.alert('Error', error);
         }
     };
 
-    const handleRejectRequest = async (connectionId: string) => {
-        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        try {
-            await supabase
-                .from('connections')
-                .delete()
-                .eq('id', connectionId);
+    const handleAcceptRequest = async (id: string) => {
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        const { error } = await acceptSquadRequest(id);
+        if (!error) {
+            await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } else {
+            Alert.alert('Error', error);
+        }
+    };
 
-            await loadConnections();
-        } catch (err) {
-            console.error('Error rejecting request:', err);
+    const handleRejectRequest = async (id: string) => {
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        const { error } = await removeSquadMember(id);
+        if (error) {
+            console.error('Error rejecting:', error);
         }
     };
 
@@ -601,68 +547,67 @@ export default function SquadScreen({ route }: any) {
 
     // RENDER: Members Tab
     const renderMembersTab = () => {
-        const renderMember = (connection: Connection, type: 'squad' | 'follower') => {
-            const userData = type === 'squad' ? connection.following : connection.follower;
-            const profile = userData?.athlete_profiles?.[0];
-            const displayName = profile?.display_name || userData?.email?.split('@')[0] || 'Unknown';
-
+        const renderMember = (member: SquadMember) => {
             return (
                 <Pressable
-                    key={connection.id}
+                    key={member.user_id}
                     style={[styles.memberItem, { backgroundColor: themeColors.glassBg, borderColor: themeColors.glassBorder }]}
                     onPress={() => {
                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        navigation.navigate('AthleteProfile', { id: userData?.id || '' });
+                        navigation.navigate('AthleteProfile', { id: member.user_id });
                     }}
                 >
                     <View style={[styles.avatar, { backgroundColor: themeColors.bgTertiary }]}>
-                        {profile?.avatar_url ? (
-                            <Image source={{ uri: profile.avatar_url }} style={styles.avatarImage} />
+                        {member.avatar_url ? (
+                            <Image source={{ uri: member.avatar_url }} style={styles.avatarImage} />
                         ) : (
                             <Text style={[styles.avatarText, { color: themeColors.textPrimary }]}>
-                                {getInitials(displayName)}
+                                {getInitials(member.display_name)}
                             </Text>
                         )}
                     </View>
                     <View style={styles.memberInfo}>
-                        <Text style={[styles.memberName, { color: themeColors.textPrimary }]}>{displayName}</Text>
-                        {profile?.bio && (
-                            <Text style={[styles.memberBio, { color: themeColors.textSecondary }]} numberOfLines={1}>
-                                {profile.bio}
-                            </Text>
-                        )}
+                        <Text style={[styles.memberName, { color: themeColors.textPrimary }]}>{member.display_name}</Text>
+                        <Text style={[styles.memberBio, { color: themeColors.textSecondary }]}>@{member.username}</Text>
                     </View>
-                    <Feather name="chevron-right" size={20} color={themeColors.textMuted} />
+                    {/* Add Remove Option? For now just profile link */}
+                    <Pressable
+                        style={{ padding: 8 }}
+                        onPress={() => {
+                            Alert.alert('Remove Squad Member', `Allow ${member.display_name} to leave your squad?`, [
+                                { text: 'Cancel', style: 'cancel' },
+                                { text: 'Remove', style: 'destructive', onPress: () => removeSquadMember(member.relationship_id) }
+                            ]);
+                        }}
+                    >
+                        <Feather name="user-x" size={20} color={themeColors.textMuted} />
+                    </Pressable>
                 </Pressable>
             );
         };
 
-        const renderRequest = (connection: Connection) => {
-            const userData = connection.follower;
-            const profile = userData?.athlete_profiles?.[0];
-            const displayName = profile?.display_name || userData?.email?.split('@')[0] || 'Unknown';
-
+        const renderRequest = (request: SquadMember) => {
             return (
-                <View key={connection.id} style={[styles.requestItem, { backgroundColor: themeColors.glassBg, borderColor: themeColors.glassBorder }]}>
+                <View key={request.relationship_id} style={[styles.requestItem, { backgroundColor: themeColors.glassBg, borderColor: themeColors.glassBorder }]}>
                     <View style={[styles.avatar, { backgroundColor: themeColors.bgTertiary }]}>
                         <Text style={[styles.avatarText, { color: themeColors.textPrimary }]}>
-                            {getInitials(displayName)}
+                            {getInitials(request.display_name)}
                         </Text>
                     </View>
                     <View style={styles.memberInfo}>
-                        <Text style={[styles.memberName, { color: themeColors.textPrimary }]}>{displayName}</Text>
-                        <Text style={[styles.requestLabel, { color: themeColors.textMuted }]}>wants to follow you</Text>
+                        <Text style={[styles.memberName, { color: themeColors.textPrimary }]}>{request.display_name}</Text>
+                        <Text style={[styles.requestLabel, { color: themeColors.textMuted }]}>wants to join your Squad</Text>
                     </View>
                     <View style={styles.requestActions}>
                         <Pressable
                             style={[styles.acceptBtn, { backgroundColor: userColors.accent_color }]}
-                            onPress={() => handleAcceptRequest(connection.id)}
+                            onPress={() => handleAcceptRequest(request.relationship_id)}
                         >
                             <Feather name="check" size={18} color="#fff" />
                         </Pressable>
                         <Pressable
                             style={[styles.rejectBtn, { backgroundColor: themeColors.inputBg }]}
-                            onPress={() => handleRejectRequest(connection.id)}
+                            onPress={() => handleRejectRequest(request.relationship_id)}
                         >
                             <Feather name="x" size={18} color={themeColors.textSecondary} />
                         </Pressable>
@@ -671,7 +616,7 @@ export default function SquadScreen({ route }: any) {
             );
         };
 
-        if (connectionsLoading) {
+        if (squadLoading) {
             return (
                 <View style={styles.loadingContainer}>
                     <ActivityIndicator size="large" color={userColors.accent_color} />
@@ -691,71 +636,42 @@ export default function SquadScreen({ route }: any) {
                     />
                 }
             >
-                {/* Sub-tabs for Members */}
-                <View style={[styles.subTabs, { borderBottomColor: themeColors.divider }]}>
-                    <Pressable
-                        style={[styles.subTab, membersTab === 'squad' && { borderBottomColor: userColors.accent_color }]}
-                        onPress={() => setMembersTab('squad')}
-                    >
-                        <Text style={[styles.subTabText, { color: membersTab === 'squad' ? userColors.accent_color : themeColors.textMuted }]}>
-                            Squad ({following.length})
-                        </Text>
-                    </Pressable>
-                    <Pressable
-                        style={[styles.subTab, membersTab === 'followers' && { borderBottomColor: userColors.accent_color }]}
-                        onPress={() => setMembersTab('followers')}
-                    >
-                        <Text style={[styles.subTabText, { color: membersTab === 'followers' ? userColors.accent_color : themeColors.textMuted }]}>
-                            Followers ({followers.length})
-                        </Text>
-                    </Pressable>
-                    {pendingRequests.length > 0 && (
-                        <Pressable
-                            style={[styles.subTab, membersTab === 'requests' && { borderBottomColor: userColors.accent_color }]}
-                            onPress={() => setMembersTab('requests')}
-                        >
-                            <Text style={[styles.subTabText, { color: membersTab === 'requests' ? userColors.accent_color : themeColors.textMuted }]}>
-                                Requests ({pendingRequests.length})
-                            </Text>
-                        </Pressable>
-                    )}
-                </View>
-
                 <View style={styles.membersContent}>
-                    {membersTab === 'squad' && (
-                        following.length > 0 ? (
-                            following.map(c => renderMember(c, 'squad'))
-                        ) : (
-                            <View style={styles.emptyMembers}>
-                                <Text style={[styles.emptyMembersText, { color: themeColors.textMuted }]}>
-                                    You're not following anyone yet
-                                </Text>
-                                <Pressable
-                                    style={[styles.findAthletesBtn, { borderColor: userColors.accent_color }]}
-                                    onPress={() => setShowAddModal(true)}
-                                >
-                                    <Feather name="search" size={16} color={userColors.accent_color} />
-                                    <Text style={[styles.findAthletesBtnText, { color: userColors.accent_color }]}>
-                                        Find Athletes
-                                    </Text>
-                                </Pressable>
-                            </View>
-                        )
+                    {/* Requests Section */}
+                    {requests.length > 0 && (
+                        <View style={{ marginBottom: 24 }}>
+                            <Text style={[styles.sectionTitle, { color: themeColors.textSecondary, marginBottom: 12, marginLeft: 4 }]}>
+                                Requests ({requests.length})
+                            </Text>
+                            {requests.map(c => renderRequest(c))}
+                        </View>
                     )}
 
-                    {membersTab === 'followers' && (
-                        followers.length > 0 ? (
-                            followers.map(c => renderMember(c, 'follower'))
-                        ) : (
-                            <View style={styles.emptyMembers}>
-                                <Text style={[styles.emptyMembersText, { color: themeColors.textMuted }]}>
-                                    No followers yet
-                                </Text>
-                            </View>
-                        )
-                    )}
+                    {/* Squad List */}
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                        <Text style={[styles.sectionTitle, { color: themeColors.textPrimary }]}>
+                            Squad Members ({squad.length})
+                        </Text>
+                    </View>
 
-                    {membersTab === 'requests' && pendingRequests.map(c => renderRequest(c))}
+                    {squad.length > 0 ? (
+                        squad.map(c => renderMember(c))
+                    ) : (
+                        <View style={styles.emptyMembers}>
+                            <Text style={[styles.emptyMembersText, { color: themeColors.textMuted }]}>
+                                Your Squad is empty.
+                            </Text>
+                            <Pressable
+                                style={[styles.findAthletesBtn, { borderColor: userColors.accent_color }]}
+                                onPress={() => setShowAddModal(true)}
+                            >
+                                <Feather name="user-plus" size={16} color={userColors.accent_color} />
+                                <Text style={[styles.findAthletesBtnText, { color: userColors.accent_color }]}>
+                                    Add Squad Members
+                                </Text>
+                            </Pressable>
+                        </View>
+                    )}
                 </View>
             </ScrollView>
         );
@@ -793,13 +709,15 @@ export default function SquadScreen({ route }: any) {
                     </View>
                 </PagerView>
 
-                {/* FAB - Create Event or Post */}
+                {/* FAB - Create Event, Post, or Add Member */}
                 <Pressable
                     style={[styles.fab, { backgroundColor: userColors.accent_color }]}
                     onPress={() => {
                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                         if (activeTab === 'events') {
                             handleCreateEvent();
+                        } else if (activeTab === 'members') {
+                            setShowAddModal(true);
                         } else {
                             navigation.navigate('CreatePost');
                         }
@@ -875,9 +793,9 @@ export default function SquadScreen({ route }: any) {
                                                 </View>
                                                 <Pressable
                                                     style={[styles.followBtn, { backgroundColor: userColors.accent_color }]}
-                                                    onPress={() => handleFollow(result.user_id)}
+                                                    onPress={() => handleAddSquad(result.user_id)}
                                                 >
-                                                    <Text style={styles.followBtnText}>Follow</Text>
+                                                    <Text style={styles.followBtnText}>Add</Text>
                                                 </Pressable>
                                             </View>
                                         ))}

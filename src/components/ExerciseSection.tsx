@@ -30,9 +30,11 @@ interface ExerciseSectionProps {
         }>;
     };
     onSetToggle?: (setId: string, newComplete: boolean) => void;
+    onSetAdd?: (newSet: any) => void;
+    onSetDelete?: (setId: string) => void;
 }
 
-export default function ExerciseSection({ workoutExercise, onSetToggle }: ExerciseSectionProps) {
+export default function ExerciseSection({ workoutExercise, onSetToggle, onSetAdd, onSetDelete }: ExerciseSectionProps) {
     const navigation = useNavigation<NavigationProp>();
     const { themeColors, colors: userColors } = useTheme();
     const { addSet, updateSet, deleteSet, toggleSetComplete, duplicateSet } = useSets();
@@ -107,6 +109,10 @@ export default function ExerciseSection({ workoutExercise, onSetToggle }: Exerci
         const { data } = await duplicateSet(workoutExercise.id, lastSet);
         if (data) {
             setSets((prev) => [...prev, data]);
+            // Notify parent
+            if (onSetAdd) {
+                onSetAdd(data);
+            }
         }
     };
 
@@ -115,6 +121,10 @@ export default function ExerciseSection({ workoutExercise, onSetToggle }: Exerci
 
         await deleteSet(setId);
         setSets((prev) => prev.filter((s) => s.id !== setId));
+        // Notify parent
+        if (onSetDelete) {
+            onSetDelete(setId);
+        }
     };
 
     const handleExerciseClick = () => {

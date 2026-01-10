@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     View,
     Text,
@@ -8,7 +8,7 @@ import {
     ActivityIndicator,
     RefreshControl,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Feather } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
@@ -38,6 +38,13 @@ export default function SquadEventsScreen() {
     const [activeTab, setActiveTab] = useState<TabType>('my_events');
     const [refreshing, setRefreshing] = useState(false);
     const [eventProgress, setEventProgress] = useState<Record<string, { completed: number; total: number }>>({});
+
+    // Refresh events when screen comes into focus
+    useFocusEffect(
+        useCallback(() => {
+            loadEvents();
+        }, [loadEvents])
+    );
 
     // Load progress for my events
     useEffect(() => {
